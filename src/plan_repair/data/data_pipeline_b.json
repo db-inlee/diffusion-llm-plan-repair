@@ -1,0 +1,53 @@
+{
+  "task": {
+    "task_id": "data_pipeline_B",
+    "user_query": "3개 소스의 분기별 매출 데이터를 통합 분석해 인사이트 리포트를 만들어줘.",
+    "available_tools": [
+      {"name": "load_csv"},
+      {"name": "load_db"},
+      {"name": "load_api"},
+      {"name": "profile"},
+      {"name": "validate_schema"},
+      {"name": "clean_missing"},
+      {"name": "clean_outlier"},
+      {"name": "normalize"},
+      {"name": "join"},
+      {"name": "enrich"},
+      {"name": "aggregate"},
+      {"name": "pivot"},
+      {"name": "statistical_test"},
+      {"name": "correlate"},
+      {"name": "visualize"},
+      {"name": "interpret"},
+      {"name": "report"}
+    ],
+    "required_evidence": ["csv_dataset", "db_dataset", "market_index"],
+    "required_operations": ["cleaning", "normalization", "join", "aggregation", "statistical_analysis"]
+  },
+  "plan": {
+    "goal": "3개 소스 분기별 매출 통합 분석 인사이트 리포트",
+    "steps": [
+      {"id": "l_csv",  "tool": "load_csv",         "arguments": {"path": "sales_q.csv"}, "input_from": []},
+      {"id": "l_db",   "tool": "load_db",          "arguments": {"table": "customers"}, "input_from": []},
+      {"id": "l_api",  "tool": "load_api",         "arguments": {"endpoint": "market_index"}, "input_from": []},
+      {"id": "pr_csv", "tool": "profile",          "arguments": {}, "input_from": ["l_csv"]},
+      {"id": "pr_db",  "tool": "profile",          "arguments": {}, "input_from": ["l_db"]},
+      {"id": "vs_csv", "tool": "validate_schema",  "arguments": {}, "input_from": ["pr_csv"]},
+      {"id": "vs_db",  "tool": "validate_schema",  "arguments": {}, "input_from": ["pr_db"]},
+      {"id": "cm",     "tool": "clean_missing",    "arguments": {}, "input_from": ["vs_csv"]},
+      {"id": "co",     "tool": "clean_outlier",    "arguments": {}, "input_from": ["cm"]},
+      {"id": "n_csv",  "tool": "normalize",        "arguments": {"operation": "currency"}, "input_from": ["co"]},
+      {"id": "n_db",   "tool": "normalize",        "arguments": {"operation": "key"}, "input_from": ["vs_db"]},
+      {"id": "join",   "tool": "join",             "arguments": {}, "input_from": ["n_csv", "n_db"]},
+      {"id": "enrich", "tool": "enrich",           "arguments": {}, "input_from": ["join", "l_api"]},
+      {"id": "agg",    "tool": "aggregate",        "arguments": {}, "input_from": ["enrich"]},
+      {"id": "pivot",  "tool": "pivot",            "arguments": {}, "input_from": ["agg"]},
+      {"id": "stat",   "tool": "statistical_test", "arguments": {}, "input_from": ["pivot"]},
+      {"id": "corr",   "tool": "correlate",        "arguments": {}, "input_from": ["pivot"]},
+      {"id": "viz",    "tool": "visualize",        "arguments": {}, "input_from": ["stat", "corr"]},
+      {"id": "interp", "tool": "interpret",        "arguments": {}, "input_from": ["viz"]},
+      {"id": "report", "tool": "report",           "arguments": {}, "input_from": ["interp"]}
+    ],
+    "stop_condition": "정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성"
+  }
+}

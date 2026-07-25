@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments and tool caches
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+
+# Markdown: only README.md is tracked; ticket, plan and ADR docs stay local.
+*.md
+!README.md
+
+# Note: uv.lock is committed on purpose (reproducible environment).
