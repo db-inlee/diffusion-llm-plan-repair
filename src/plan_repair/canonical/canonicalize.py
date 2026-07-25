@@ -32,9 +32,26 @@ def canonical_step(step: Step) -> dict[str, Any]:
     }
 
 
+def canonical_step_body(step: Step) -> dict[str, Any]:
+    """Return the canonical mapping of a step **without its id**.
+
+    Two steps that only differ by id are the same piece of work, which is what duplicate
+    detection has to compare; :func:`canonical_step` includes the id and therefore never
+    matches across a renamed copy.
+    """
+    body = canonical_step(step)
+    del body["id"]
+    return body
+
+
 def step_hash(step: Step) -> str:
-    """Return the canonical hash of a single step."""
+    """Return the canonical hash of a single step, id included."""
     return _sha256(json.dumps(canonical_step(step), **_JSON_ARGS))
+
+
+def step_body_hash(step: Step) -> str:
+    """Return the canonical hash of a step's work, ignoring its id."""
+    return _sha256(json.dumps(canonical_step_body(step), **_JSON_ARGS))
 
 
 def canonicalize(plan: AgentPlan) -> tuple[str, dict[str, str]]:

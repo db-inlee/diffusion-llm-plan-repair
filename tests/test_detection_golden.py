@@ -1,8 +1,8 @@
 """Closed loop on the domain B pipeline: inject -> validate -> compare against ground truth.
 
-These are the B-1..B-4 corruption golden cases of the scenario document. Detection recall is
-measured as containment (every injected step/path is reported by the validator), not as set
-equality: a cycle is legitimately reported with its whole component while the injector only
+These are the B-1..B-4 (Ticket 001) and B-5..B-8 (Ticket 002) corruption golden cases. Detection
+recall is measured as containment (every injected step/path is reported by the validator), not as
+set equality: a cycle is legitimately reported with its whole component while the injector only
 claims the step it modified.
 """
 
@@ -12,14 +12,24 @@ from plan_repair.corruption import (
     CYCLE_MODE,
     UNKNOWN_MODE,
     inject_broken_dependency,
+    inject_duplicate_step,
     inject_step_deletion,
+    inject_wrong_ordering,
+    inject_wrong_tool,
 )
 from plan_repair.data import load_reference
+from plan_repair.schema import CorruptionResult, InjectedError
 from plan_repair.validation import (
+    DANGLING_STEP,
     DEP_CYCLE,
+    DUPLICATE_STEP,
+    MISSING_STOP_CONDITION,
     ORDERING,
     UNKNOWN_DEPENDENCY,
+    UNKNOWN_TOOL,
     input_from_path,
+    step_path,
+    stop_condition_path,
     validate_plan,
 )
 
@@ -47,10 +57,42 @@ def corrupt(case, plan):
         return inject_step_deletion(plan, step_id="join")
     if case == "B-4":
         return inject_step_deletion(plan, step_id="co")
+    if case == "B-5":
+        return inject_wrong_tool(plan, step_id="join")
+    if case == "B-6":
+        return inject_wrong_ordering(plan, step_id="join")
+    if case == "B-7":
+        return inject_duplicate_step(plan, step_id="agg")
+    if case == "B-8":
+        return inject_missing_stop_condition(plan)
     raise AssertionError(f"unknown golden case: {case}")
 
 
-GOLDEN_CASES = ["B-1", "B-2", "B-3", "B-4"]
+def inject_missing_stop_condition(plan):
+    """B-8 needs no injector of its own — Ticket 002 adds three, and this is a plan-level edit.
+
+    Kept here so the golden battery can treat it like the other cases.
+    """
+    broken = plan.model_copy(deep=True)
+    detail = {"original_stop_condition": broken.stop_condition}
+    broken.stop_condition = None
+    return CorruptionResult(
+        broken_plan=broken,
+        injected=[
+            InjectedError(
+                corruption_type="missing_stop_condition",
+                damaged_step_ids=[],
+                damaged_paths=[stop_condition_path()],
+                detail=detail,
+            )
+        ],
+        preserved_step_ids=[step.id for step in broken.steps],
+    )
+
+
+GOLDEN_CASES = ["B-1", "B-2", "B-3", "B-4", "B-5", "B-6", "B-7", "B-8"]
+# B-6 is the ordering corruption itself; every other case must leave ordering silent.
+NON_ORDERING_CASES = [case for case in GOLDEN_CASES if case != "B-6"]
 
 
 def test_reference_pipeline_has_no_false_positive():
@@ -72,9 +114,9 @@ def test_detection_recall_is_one(case):
     assert detection_recall(corruption.injected, result) == 1.0
 
 
-@pytest.mark.parametrize("case", GOLDEN_CASES)
+@pytest.mark.parametrize("case", NON_ORDERING_CASES)
 def test_corruptions_never_produce_ordering_errors(case):
-    """The ticket's two corruptions must not create ordering violations; one means a bug here."""
+    """Apart from the ordering corruption itself, an ordering error means an injector bug."""
     task, plan = load_reference()
     corruption = corrupt(case, plan)
 
@@ -134,6 +176,18 @@ def test_b3_step_deletion_at_a_fan_in():
     assert len(corruption.preserved_step_ids) == 18
 
 
+def test_b3_step_deletion_also_strands_the_steps_that_fed_it():
+    """Deleting join leaves n_csv and n_db without a consumer (Ticket 002 dangling check)."""
+    task, plan = load_reference()
+    corruption = corrupt("B-3", plan)
+
+    errors = validate_plan(corruption.broken_plan, task).errors_of_type(DANGLING_STEP)
+
+    assert [error.step_ids[0] for error in errors] == ["n_csv", "n_db"]
+    assert [error.paths[0] for error in errors] == ["$.steps[?n_csv]", "$.steps[?n_db]"]
+    assert [error.paths[0] for error in errors] == [step_path("n_csv"), step_path("n_db")]
+
+
 def test_b4_step_deletion_in_the_middle_of_a_chain():
     task, plan = load_reference()
     corruption = corrupt("B-4", plan)
@@ -152,5 +206,72 @@ def test_b4_step_deletion_in_the_middle_of_a_chain():
         "arguments": {},
         "input_from": ["cm"],
     }
-    # cm survives but nothing consumes it any more (dangling step, a later ticket's concern).
+    # cm survives but nothing consumes it any more — now caught by the dangling check.
     assert "cm" in corruption.preserved_step_ids
+    dangling = validate_plan(corruption.broken_plan, task).errors_of_type(DANGLING_STEP)
+    assert [error.step_ids[0] for error in dangling] == ["cm"]
+    assert dangling[0].paths == ["$.steps[?cm]"]
+
+
+def test_b5_wrong_tool():
+    task, plan = load_reference()
+    corruption = corrupt("B-5", plan)
+    injected = corruption.injected[0]
+
+    errors = validate_plan(corruption.broken_plan, task).errors_of_type(UNKNOWN_TOOL)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == ["join"]
+    assert errors[0].paths == ["$.steps[?join].tool"]
+    assert injected.damaged_step_ids == ["join"]
+    assert injected.damaged_paths == ["$.steps[?join].tool"]
+    assert injected.detail["original_tool"] == "join"
+
+
+def test_b6_wrong_ordering():
+    task, plan = load_reference()
+    corruption = corrupt("B-6", plan)
+    injected = corruption.injected[0]
+
+    result = validate_plan(corruption.broken_plan, task)
+    errors = result.errors_of_type(ORDERING)
+
+    assert len(errors) == 1
+    assert "join" in errors[0].step_ids
+    assert errors[0].paths == ["$.steps[?join]"]
+    assert injected.damaged_step_ids == ["join"]
+    assert injected.damaged_paths == ["$.steps[?join]"]
+    assert injected.detail["moved_from_index"] == 11
+    # Reordering touches no edge, so the graph stays acyclic; a cycle here would be a bug.
+    assert result.errors_of_type(DEP_CYCLE) == []
+
+
+def test_b7_duplicate_step():
+    task, plan = load_reference()
+    corruption = corrupt("B-7", plan)
+    injected = corruption.injected[0]
+
+    result = validate_plan(corruption.broken_plan, task)
+    errors = result.errors_of_type(DUPLICATE_STEP)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == ["agg", "agg_dup"]
+    assert errors[0].paths == ["$.steps[?agg]", "$.steps[?agg_dup]"]
+    assert errors[0].detail["kind"] == "identical_content"
+    assert injected.damaged_step_ids == ["agg_dup"]
+    assert injected.damaged_paths == ["$.steps[?agg_dup]"]
+    assert injected.detail["duplicate_of"] == "agg"
+    # The copy feeds nothing, so it is dangling as well; both checks fire independently.
+    assert [error.step_ids[0] for error in result.errors_of_type(DANGLING_STEP)] == ["agg_dup"]
+
+
+def test_b8_missing_stop_condition():
+    task, plan = load_reference()
+    corruption = corrupt("B-8", plan)
+
+    errors = validate_plan(corruption.broken_plan, task).errors_of_type(MISSING_STOP_CONDITION)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == []
+    assert errors[0].paths == ["$.stop_condition"]
+    assert corruption.injected[0].damaged_paths == [stop_condition_path()]

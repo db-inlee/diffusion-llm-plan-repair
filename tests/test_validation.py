@@ -6,13 +6,17 @@ are exercised here by hand-editing the reference pipeline. Every implemented che
 
 from plan_repair.data import load_reference
 from plan_repair.validation import (
+    DANGLING_STEP,
     DEP_CYCLE,
+    DUPLICATE_STEP,
+    MISSING_STOP_CONDITION,
     ORDERING,
     SCHEMA,
     UNKNOWN_DEPENDENCY,
     UNKNOWN_TOOL,
     input_from_path,
     step_path,
+    stop_condition_path,
     tool_path,
     validate_plan,
 )
@@ -104,7 +108,7 @@ def test_ordering_violation_is_detected():
     assert not result.valid
     assert len(errors) == 1
     assert errors[0].step_ids == ["join", "n_csv", "n_db"]
-    assert errors[0].paths == [input_from_path("join")]
+    assert errors[0].paths == [step_path("join")]
     assert result.errors_of_type(DEP_CYCLE) == []
 
 
@@ -144,6 +148,78 @@ def test_schema_error_falls_back_to_positional_path():
     assert errors[0].step_ids == []
 
 
+def test_duplicate_step_is_detected_by_identical_content():
+    task, plan = load_reference()
+    copy = step(plan, "agg").model_copy(deep=True)
+    copy.id = "agg_dup"
+    plan.steps.insert(plan.steps.index(step(plan, "agg")) + 1, copy)
+
+    errors = validate_plan(plan, task).errors_of_type(DUPLICATE_STEP)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == ["agg", "agg_dup"]
+    assert errors[0].paths == [step_path("agg"), step_path("agg_dup")]
+    assert errors[0].detail["kind"] == "identical_content"
+
+
+def test_duplicate_step_is_detected_by_id_clash():
+    task, plan = load_reference()
+    copy = step(plan, "agg").model_copy(deep=True)
+    plan.steps.insert(plan.steps.index(step(plan, "agg")) + 1, copy)
+
+    errors = validate_plan(plan, task).errors_of_type(DUPLICATE_STEP)
+    kinds = {error.detail["kind"] for error in errors}
+
+    assert kinds == {"duplicate_id", "identical_content"}
+    assert next(e for e in errors if e.detail["kind"] == "duplicate_id").step_ids == ["agg"]
+
+
+def test_sharing_a_tool_is_not_duplication():
+    """Two steps may legitimately call the same tool on different inputs."""
+    task, plan = load_reference()
+    profiles = [s for s in plan.steps if s.tool == "profile"]
+
+    assert len(profiles) == 2
+    assert {s.id for s in profiles} == {"pr_csv", "pr_db"}
+    assert validate_plan(plan, task).errors_of_type(DUPLICATE_STEP) == []
+
+
+def test_dangling_step_is_detected_and_terminal_is_exempt():
+    task, plan = load_reference()
+    step(plan, "enrich").input_from = ["join"]  # l_api loses its only consumer
+
+    errors = validate_plan(plan, task).errors_of_type(DANGLING_STEP)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == ["l_api"]
+    assert errors[0].paths == [step_path("l_api")]
+
+
+def test_reference_terminal_is_not_reported_as_dangling():
+    task, plan = load_reference()
+
+    assert plan.steps[-1].id == "report"
+    assert validate_plan(plan, task).errors_of_type(DANGLING_STEP) == []
+
+
+def test_missing_stop_condition_is_detected():
+    task, plan = load_reference()
+    plan.stop_condition = None
+
+    errors = validate_plan(plan, task).errors_of_type(MISSING_STOP_CONDITION)
+
+    assert len(errors) == 1
+    assert errors[0].step_ids == []
+    assert errors[0].paths == [stop_condition_path()]
+
+
+def test_blank_stop_condition_counts_as_missing():
+    task, plan = load_reference()
+    plan.stop_condition = "   "
+
+    assert validate_plan(plan, task).errors_of_type(MISSING_STOP_CONDITION)
+
+
 def test_unknown_dependency_and_unknown_tool_are_reported_together():
     task, plan = load_reference()
     step(plan, "join").tool = "join_x"
@@ -151,4 +227,11 @@ def test_unknown_dependency_and_unknown_tool_are_reported_together():
 
     result = validate_plan(plan, task)
 
-    assert {error.type for error in result.errors} == {UNKNOWN_TOOL, UNKNOWN_DEPENDENCY}
+    # Rewriting the edge also leaves l_api without a consumer, so the dangling check fires too:
+    # the checks are independent, cycle -> ordering being the only hierarchy.
+    assert {error.type for error in result.errors} == {
+        UNKNOWN_TOOL,
+        UNKNOWN_DEPENDENCY,
+        DANGLING_STEP,
+    }
+    assert result.errors_of_type(DANGLING_STEP)[0].step_ids == ["l_api"]

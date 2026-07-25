@@ -10,6 +10,7 @@ from typing import Any
 
 PLAN_PATH = "$"
 STEPS_PATH = "$.steps"
+STOP_CONDITION_PATH = "$.stop_condition"
 
 
 def step_path(step_id: str) -> str:
@@ -25,6 +26,11 @@ def input_from_path(step_id: str) -> str:
 def tool_path(step_id: str) -> str:
     """Path of the tool field of ``step_id``."""
     return f"{step_path(step_id)}.tool"
+
+
+def stop_condition_path() -> str:
+    """Path of the plan-level stop condition."""
+    return STOP_CONDITION_PATH
 
 
 def path_from_loc(loc: tuple[Any, ...], raw_plan: Any) -> tuple[str, list[str]]:

@@ -14,12 +14,15 @@ from typing import Any
 
 from plan_repair.schema.corruption import (
     BROKEN_DEPENDENCY,
+    DUPLICATE_STEP,
     STEP_DELETION,
+    WRONG_ORDERING,
+    WRONG_TOOL,
     CorruptionResult,
     InjectedError,
 )
 from plan_repair.schema.plan import AgentPlan, Step
-from plan_repair.validation.paths import input_from_path
+from plan_repair.validation.paths import input_from_path, step_path, tool_path
 
 UNKNOWN_MODE = "unknown"
 CYCLE_MODE = "cycle"
@@ -52,7 +55,7 @@ def inject_broken_dependency(
         removed = dep if dep is not None else original_input_from[-1]
         if removed not in original_input_from:
             raise ValueError(f"step {step_id!r} does not depend on {removed!r}")
-        unknown_id = _unknown_id(broken, removed)
+        unknown_id = _free_id(broken, f"{removed}_x")
         target.input_from = [
             unknown_id if edge == removed else edge for edge in original_input_from
         ]
@@ -127,6 +130,109 @@ def inject_step_deletion(plan: AgentPlan, *, step_id: str) -> CorruptionResult:
     )
 
 
+def inject_wrong_tool(
+    plan: AgentPlan, *, step_id: str, new_tool: str | None = None
+) -> CorruptionResult:
+    """Replace the tool of ``step_id`` with a name the task does not offer.
+
+    ``new_tool`` defaults to the original name with an ``_x`` suffix, the same convention the
+    unknown dependency mode uses.
+    """
+    broken = plan.model_copy(deep=True)
+    target = _find_step(broken, step_id)
+    original_tool = target.tool
+    target.tool = new_tool if new_tool is not None else f"{original_tool}_x"
+
+    injected = InjectedError(
+        corruption_type=WRONG_TOOL,
+        damaged_step_ids=[step_id],
+        damaged_paths=[tool_path(step_id)],
+        detail={"original_tool": original_tool, "new_tool": target.tool},
+    )
+    return CorruptionResult(
+        broken_plan=broken,
+        injected=[injected],
+        preserved_step_ids=_preserved(broken, damaged={step_id}),
+    )
+
+
+def inject_wrong_ordering(
+    plan: AgentPlan, *, step_id: str, to_index: int | None = None
+) -> CorruptionResult:
+    """Move ``step_id`` earlier in the list so that it precedes a step it consumes.
+
+    Only list positions change; ``input_from`` edges are untouched, so this can never introduce
+    a dependency cycle (ordering is position-based, cycles are edge-based). The post-conditions
+    below are contract defence, not an expected failure mode.
+
+    ``to_index`` defaults to the position of the earliest step this one depends on.
+    """
+    broken = plan.model_copy(deep=True)
+    positions = {step.id: index for index, step in enumerate(broken.steps)}
+    if step_id not in positions:
+        raise ValueError(f"no such step: {step_id!r}")
+
+    target = _find_step(broken, step_id)
+    dependencies = [dep for dep in target.input_from if dep in positions]
+    if not dependencies:
+        raise ValueError(f"step {step_id!r} has no dependency to be ordered against")
+
+    from_index = positions[step_id]
+    target_index = min(positions[dep] for dep in dependencies) if to_index is None else to_index
+    if target_index >= from_index:
+        raise ValueError(
+            f"moving {step_id!r} to index {target_index} would not place it before its "
+            f"dependencies (it currently sits at index {from_index})"
+        )
+
+    broken.steps.insert(target_index, broken.steps.pop(from_index))
+
+    moved = {step.id: index for index, step in enumerate(broken.steps)}
+    if not any(moved[dep] > moved[step_id] for dep in dependencies):
+        raise ValueError(f"moving {step_id!r} did not create an ordering violation")
+
+    injected = InjectedError(
+        corruption_type=WRONG_ORDERING,
+        damaged_step_ids=[step_id],
+        damaged_paths=[step_path(step_id)],
+        detail={"moved_from_index": from_index, "moved_to_index": target_index},
+    )
+    return CorruptionResult(
+        broken_plan=broken,
+        injected=[injected],
+        preserved_step_ids=_preserved(broken, damaged={step_id}),
+    )
+
+
+def inject_duplicate_step(
+    plan: AgentPlan, *, step_id: str, new_id: str | None = None
+) -> CorruptionResult:
+    """Insert a copy of ``step_id`` right after the original.
+
+    The copy gets a fresh id (``<id>_dup``) by default, which the validator catches as identical
+    content. Passing ``new_id=step_id`` produces an id clash instead; both are detectable.
+    """
+    broken = plan.model_copy(deep=True)
+    original = _find_step(broken, step_id)
+    duplicate = original.model_copy(deep=True)
+    duplicate.id = new_id if new_id is not None else _free_id(broken, f"{step_id}_dup")
+
+    index = next(i for i, step in enumerate(broken.steps) if step.id == step_id)
+    broken.steps.insert(index + 1, duplicate)
+
+    injected = InjectedError(
+        corruption_type=DUPLICATE_STEP,
+        damaged_step_ids=[duplicate.id],
+        damaged_paths=[step_path(duplicate.id)],
+        detail={"duplicate_of": step_id, "duplicate_id": duplicate.id},
+    )
+    return CorruptionResult(
+        broken_plan=broken,
+        injected=[injected],
+        preserved_step_ids=_preserved(broken, damaged={duplicate.id}),
+    )
+
+
 def _find_step(plan: AgentPlan, step_id: str) -> Step:
     for step in plan.steps:
         if step.id == step_id:
@@ -138,15 +244,15 @@ def _preserved(plan: AgentPlan, damaged: set[str]) -> list[str]:
     return [step.id for step in plan.steps if step.id not in damaged]
 
 
-def _unknown_id(plan: AgentPlan, base: str) -> str:
-    """Return an id derived from ``base`` that no step of ``plan`` carries."""
+def _free_id(plan: AgentPlan, candidate: str) -> str:
+    """Return ``candidate``, numbered if some step of ``plan`` already carries it."""
     known = {step.id for step in plan.steps}
-    candidate = f"{base}_x"
+    if candidate not in known:
+        return candidate
     suffix = 2
-    while candidate in known:
-        candidate = f"{base}_x{suffix}"
+    while f"{candidate}{suffix}" in known:
         suffix += 1
-    return candidate
+    return f"{candidate}{suffix}"
 
 
 def _depends_on(plan: AgentPlan, *, dependent: str, dependency: str) -> bool:

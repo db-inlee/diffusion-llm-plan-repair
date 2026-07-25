@@ -12,6 +12,9 @@ from plan_repair.schema.plan import AgentPlan
 
 BROKEN_DEPENDENCY = "broken_dependency"
 STEP_DELETION = "step_deletion"
+WRONG_TOOL = "wrong_tool"
+WRONG_ORDERING = "wrong_ordering"
+DUPLICATE_STEP = "duplicate_step"
 
 
 class InjectedError(BaseModel):

@@ -1,8 +1,9 @@
 """Reference plans.
 
 Reference data is kept as JSON so it stays diffable against the scenario document, and is parsed
-into the pydantic contract on load. Domain B (the 20-step data analysis pipeline) is the only
-reference of this ticket; domain A is reserved for the generality check of a later ticket.
+into the pydantic contract on load. Domain B is the 20-step data analysis pipeline; domain A is
+the 19-step research report pipeline, added so the validator and the injectors can be shown to
+work without any domain-specific knowledge.
 """
 
 import json
@@ -12,6 +13,7 @@ from typing import Any
 from plan_repair.schema.plan import AgentPlan
 from plan_repair.schema.task import AgentTask
 
+DATA_PIPELINE_A = "data_pipeline_a"
 DATA_PIPELINE_B = "data_pipeline_b"
 
 
@@ -35,4 +37,10 @@ def _load_json(name: str) -> dict[str, Any]:
     return payload
 
 
-__all__ = ["DATA_PIPELINE_B", "load_reference", "load_reference_plan", "load_task"]
+__all__ = [
+    "DATA_PIPELINE_A",
+    "DATA_PIPELINE_B",
+    "load_reference",
+    "load_reference_plan",
+    "load_task",
+]

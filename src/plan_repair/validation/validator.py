@@ -1,12 +1,16 @@
-"""Core plan validator — five structural checks.
+"""Core plan validator — eight structural checks.
 
 1. schema validity      — the payload parses as an :class:`AgentPlan`
 2. tool existence       — every ``step.tool`` is offered by the task
 3. dependency existence — every ``input_from`` id refers to a step of the plan
 4. DAG cycle            — the dependency graph is acyclic
 5. ordering             — a step never consumes a step that appears later in the list
+6. duplicate step       — no id clash and no two steps doing identical work
+7. dangling step        — no step whose output nobody consumes, the plan terminal aside
+8. stop condition       — the plan states when it is done
 
 The checks are static only: nothing here judges whether a plan would *execute* successfully.
+Every check fires independently; the cycle/ordering hierarchy below is the single exception.
 
 Ordering is skipped once a cycle is found. A topological order is undefined on a cyclic graph, so
 an ordering violation there is a derived symptom of the cycle rather than an independent finding
@@ -19,10 +23,14 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from plan_repair.canonical.canonicalize import step_body_hash
 from plan_repair.schema.plan import AgentPlan
 from plan_repair.schema.task import AgentTask
 from plan_repair.validation.models import (
+    DANGLING_STEP,
     DEP_CYCLE,
+    DUPLICATE_STEP,
+    MISSING_STOP_CONDITION,
     ORDERING,
     SCHEMA,
     UNKNOWN_DEPENDENCY,
@@ -30,7 +38,13 @@ from plan_repair.validation.models import (
     PlanValidationResult,
     ValidationError,
 )
-from plan_repair.validation.paths import input_from_path, path_from_loc, tool_path
+from plan_repair.validation.paths import (
+    input_from_path,
+    path_from_loc,
+    step_path,
+    stop_condition_path,
+    tool_path,
+)
 
 
 def validate_plan(plan: AgentPlan | Mapping[str, Any], task: AgentTask) -> PlanValidationResult:
@@ -54,6 +68,9 @@ def validate_plan(plan: AgentPlan | Mapping[str, Any], task: AgentTask) -> PlanV
     errors.extend(cycles)
     if not cycles:
         errors.extend(_ordering_errors(parsed))
+    errors.extend(_duplicate_errors(parsed))
+    errors.extend(_dangling_errors(parsed))
+    errors.extend(_missing_stop_condition(parsed))
     return PlanValidationResult(valid=not errors, errors=errors)
 
 
@@ -196,7 +213,9 @@ def _ordering_errors(plan: AgentPlan) -> list[ValidationError]:
             ValidationError(
                 type=ORDERING,
                 step_ids=[step.id, *late],
-                paths=[input_from_path(step.id)],
+                # What is wrong is where the step sits, not the edge itself — so the path points
+                # at the step. The ordering corruption records the same location.
+                paths=[step_path(step.id)],
                 message=(
                     f"step {step.id!r} consumes step(s) listed after it: "
                     f"{', '.join(repr(dep) for dep in late)}"
@@ -204,6 +223,84 @@ def _ordering_errors(plan: AgentPlan) -> list[ValidationError]:
             )
         )
     return errors
+
+
+def _duplicate_errors(plan: AgentPlan) -> list[ValidationError]:
+    """Report id clashes and steps doing identical work.
+
+    Identical work is compared with the id stripped out (:func:`step_body_hash`), because a
+    duplicate is usually inserted under a fresh id. Sharing a *tool* is not duplication — a
+    pipeline may legitimately call the same tool on different branches — so the whole step body
+    (tool, arguments, dependencies) has to match.
+    """
+    errors: list[ValidationError] = []
+
+    positions: dict[str, list[int]] = {}
+    for index, step in enumerate(plan.steps):
+        positions.setdefault(step.id, []).append(index)
+    for step_id, indices in positions.items():
+        if len(indices) > 1:
+            errors.append(
+                ValidationError(
+                    type=DUPLICATE_STEP,
+                    step_ids=[step_id],
+                    paths=[step_path(step_id)],
+                    message=f"step id {step_id!r} is used by {len(indices)} steps",
+                    detail={"kind": "duplicate_id", "group": [step_id], "count": len(indices)},
+                )
+            )
+
+    bodies: dict[str, list[str]] = {}
+    for step in plan.steps:
+        bodies.setdefault(step_body_hash(step), []).append(step.id)
+    for group in bodies.values():
+        if len(group) > 1:
+            errors.append(
+                ValidationError(
+                    type=DUPLICATE_STEP,
+                    step_ids=group,
+                    paths=[step_path(step_id) for step_id in group],
+                    message=f"steps are identical apart from their id: {', '.join(group)}",
+                    detail={"kind": "identical_content", "group": group},
+                )
+            )
+    return errors
+
+
+def _dangling_errors(plan: AgentPlan) -> list[ValidationError]:
+    """Report steps whose output nobody consumes.
+
+    The plan terminal is defined structurally as the last step of the list — the plan's final
+    output — and never counts as dangling. Naming terminals per domain (``report``, ``fmt``, ...)
+    would hardcode domain knowledge and break on the next pipeline.
+    """
+    if not plan.steps:
+        return []
+    terminal = plan.steps[-1].id
+    consumed = {dep for step in plan.steps for dep in step.input_from}
+    return [
+        ValidationError(
+            type=DANGLING_STEP,
+            step_ids=[step.id],
+            paths=[step_path(step.id)],
+            message=f"step {step.id!r} produces output that no step consumes",
+        )
+        for step in plan.steps
+        if step.id != terminal and step.id not in consumed
+    ]
+
+
+def _missing_stop_condition(plan: AgentPlan) -> list[ValidationError]:
+    if plan.stop_condition is not None and plan.stop_condition.strip():
+        return []
+    return [
+        ValidationError(
+            type=MISSING_STOP_CONDITION,
+            step_ids=[],
+            paths=[stop_condition_path()],
+            message="plan has no stop_condition",
+        )
+    ]
 
 
 __all__ = ["validate_plan"]

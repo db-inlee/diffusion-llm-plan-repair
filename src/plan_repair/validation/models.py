@@ -4,13 +4,18 @@
 error-to-span mapping, and detection recall is measured against them.
 """
 
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 SCHEMA = "schema"
 UNKNOWN_TOOL = "unknown_tool"
 UNKNOWN_DEPENDENCY = "unknown_dependency"
 DEP_CYCLE = "dep_cycle"
 ORDERING = "ordering"
+DUPLICATE_STEP = "duplicate_step"
+MISSING_STOP_CONDITION = "missing_stop_condition"
+DANGLING_STEP = "dangling_step"
 
 # Declared by the ticket's error type union but produced by none of the five checks in this
 # ticket (it belongs to the coverage checks of a later ticket).
@@ -24,6 +29,9 @@ class ValidationError(BaseModel):
     step_ids: list[str]
     paths: list[str]
     message: str
+    # Optional structured extras (for example whether a duplicate is an id clash or identical
+    # content). Defaults to empty, so errors written against the Ticket 001 contract still match.
+    detail: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlanValidationResult(BaseModel):
