@@ -13,12 +13,12 @@ from plan_repair.corruption import (
     UNKNOWN_MODE,
     inject_broken_dependency,
     inject_duplicate_step,
+    inject_missing_stop_condition,
     inject_step_deletion,
     inject_wrong_ordering,
     inject_wrong_tool,
 )
 from plan_repair.data import load_reference
-from plan_repair.schema import CorruptionResult, InjectedError
 from plan_repair.validation import (
     DANGLING_STEP,
     DEP_CYCLE,
@@ -66,28 +66,6 @@ def corrupt(case, plan):
     if case == "B-8":
         return inject_missing_stop_condition(plan)
     raise AssertionError(f"unknown golden case: {case}")
-
-
-def inject_missing_stop_condition(plan):
-    """B-8 needs no injector of its own — Ticket 002 adds three, and this is a plan-level edit.
-
-    Kept here so the golden battery can treat it like the other cases.
-    """
-    broken = plan.model_copy(deep=True)
-    detail = {"original_stop_condition": broken.stop_condition}
-    broken.stop_condition = None
-    return CorruptionResult(
-        broken_plan=broken,
-        injected=[
-            InjectedError(
-                corruption_type="missing_stop_condition",
-                damaged_step_ids=[],
-                damaged_paths=[stop_condition_path()],
-                detail=detail,
-            )
-        ],
-        preserved_step_ids=[step.id for step in broken.steps],
-    )
 
 
 GOLDEN_CASES = ["B-1", "B-2", "B-3", "B-4", "B-5", "B-6", "B-7", "B-8"]

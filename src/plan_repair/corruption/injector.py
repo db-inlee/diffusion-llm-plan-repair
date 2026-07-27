@@ -15,6 +15,7 @@ from typing import Any
 from plan_repair.schema.corruption import (
     BROKEN_DEPENDENCY,
     DUPLICATE_STEP,
+    MISSING_STOP_CONDITION,
     STEP_DELETION,
     WRONG_ORDERING,
     WRONG_TOOL,
@@ -22,7 +23,12 @@ from plan_repair.schema.corruption import (
     InjectedError,
 )
 from plan_repair.schema.plan import AgentPlan, Step
-from plan_repair.validation.paths import input_from_path, step_path, tool_path
+from plan_repair.validation.paths import (
+    input_from_path,
+    step_path,
+    stop_condition_path,
+    tool_path,
+)
 
 UNKNOWN_MODE = "unknown"
 CYCLE_MODE = "cycle"
@@ -230,6 +236,30 @@ def inject_duplicate_step(
         broken_plan=broken,
         injected=[injected],
         preserved_step_ids=_preserved(broken, damaged={duplicate.id}),
+    )
+
+
+def inject_missing_stop_condition(plan: AgentPlan) -> CorruptionResult:
+    """Drop the plan's stop condition.
+
+    The only plan-level corruption: it damages no step, so ``damaged_step_ids`` stays empty and
+    the ground truth is a single path. Promoted from the Ticket 002 test helper because the
+    multi-error combinations of Ticket 003 need it as a real injector.
+    """
+    broken = plan.model_copy(deep=True)
+    original = broken.stop_condition
+    broken.stop_condition = None
+
+    injected = InjectedError(
+        corruption_type=MISSING_STOP_CONDITION,
+        damaged_step_ids=[],
+        damaged_paths=[stop_condition_path()],
+        detail={"original_stop_condition": original},
+    )
+    return CorruptionResult(
+        broken_plan=broken,
+        injected=[injected],
+        preserved_step_ids=_preserved(broken, damaged=set()),
     )
 
 

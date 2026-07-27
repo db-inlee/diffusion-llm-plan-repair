@@ -16,6 +16,7 @@ from plan_repair.corruption import (
     UNKNOWN_MODE,
     inject_broken_dependency,
     inject_duplicate_step,
+    inject_missing_stop_condition,
     inject_step_deletion,
     inject_wrong_ordering,
     inject_wrong_tool,
@@ -31,7 +32,7 @@ from plan_repair.validation import (
     UNKNOWN_TOOL,
     validate_plan,
 )
-from tests.test_detection_golden import detection_recall, inject_missing_stop_condition
+from tests.test_detection_golden import detection_recall
 
 
 def domain_a():
