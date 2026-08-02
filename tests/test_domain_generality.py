@@ -15,6 +15,7 @@ from plan_repair.corruption import (
     CYCLE_MODE,
     UNKNOWN_MODE,
     inject_broken_dependency,
+    inject_drop_required_step,
     inject_duplicate_step,
     inject_missing_stop_condition,
     inject_step_deletion,
@@ -22,14 +23,18 @@ from plan_repair.corruption import (
     inject_wrong_tool,
 )
 from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference
+from plan_repair.runtime import AGREE, agreement, run_plan
 from plan_repair.validation import (
     DANGLING_STEP,
     DEP_CYCLE,
     DUPLICATE_STEP,
+    MISSING_EVIDENCE,
+    MISSING_OPERATION,
     MISSING_STOP_CONDITION,
     ORDERING,
     UNKNOWN_DEPENDENCY,
     UNKNOWN_TOOL,
+    detection_metrics,
     validate_plan,
 )
 from tests.test_detection_golden import detection_recall
@@ -229,6 +234,61 @@ def battery(task, plan):
         "missing_stop_condition": inject_missing_stop_condition(plan),
         "duplicate_id": inject_duplicate_step(plan, step_id=source.id, new_id=source.id),
     }
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_coverage_is_satisfied_in_both_domains(domain):
+    """The same set difference scores both pipelines; only the tags in the data differ."""
+    task, plan = load_reference(domain)
+    produced = {tag for step in plan.steps for tag in step.produces}
+
+    assert set(task.required_evidence) <= produced
+    assert set(task.required_operations) <= produced
+    assert validate_plan(plan, task).errors_of_type(MISSING_EVIDENCE) == []
+    assert validate_plan(plan, task).errors_of_type(MISSING_OPERATION) == []
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_both_pipelines_run_to_the_end(domain):
+    task, plan = load_reference(domain)
+
+    run = run_plan(plan, task)
+
+    assert run.succeeded
+    assert run.stop_condition_reached
+    assert agreement(validate_plan(plan, task), run).verdict == AGREE
+
+
+# A-4 deletes e_paper, which is the sole producer of paper_findings — structural damage and an
+# uncovered requirement from a single deletion, the same shape as domain B's D-2.
+def test_a4_deletion_also_uncovers_a_required_evidence():
+    task, plan = domain_a()
+    corruption = A_CASES["A-4"](plan)
+
+    errors = validate_plan(corruption.broken_plan, task).errors_of_type(MISSING_EVIDENCE)
+
+    assert len(errors) == 1
+    assert errors[0].paths == ["$.required_evidence[?paper_findings]"]
+
+
+def test_drop_required_step_works_on_domain_a_unchanged():
+    """D-1's shape on A: dropping e_web breaks dedupe, strands p_web, uncovers web_findings."""
+    task, plan = domain_a()
+
+    corruption = inject_drop_required_step(plan, task, requirement="web_findings")
+    metrics = detection_metrics(
+        validate_plan(corruption.broken_plan, task),
+        {
+            ("unknown_dependency", ("dedupe",), ("$.steps[?dedupe].input_from",)),
+            ("dangling_step", ("p_web",), ("$.steps[?p_web]",)),
+            ("missing_evidence", (), ("$.required_evidence[?web_findings]",)),
+        },
+    )
+
+    assert metrics.missed == []
+    assert metrics.spurious == []
+    assert metrics.recall == 1.0
+    assert metrics.precision == 1.0
 
 
 @pytest.mark.parametrize("domain", DOMAINS)

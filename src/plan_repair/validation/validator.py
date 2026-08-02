@@ -8,8 +8,11 @@
 6. duplicate step       — no id clash and no two steps doing identical work
 7. dangling step        — no step whose output nobody consumes, the plan terminal aside
 8. stop condition       — the plan states when it is done
+9. coverage             — every required evidence and operation is claimed by some step
 
-The checks are static only: nothing here judges whether a plan would *execute* successfully.
+Checks 1-8 are structural; check 9 is the one semantic check: it asks whether the plan does what
+the task asked for, not whether it is well formed. Nothing here judges whether a plan would
+*execute* successfully — that is what the runtime package is for.
 Every check fires independently; the cycle/ordering hierarchy below is the single exception.
 
 Ordering is skipped once a cycle is found. A topological order is undefined on a cyclic graph, so
@@ -30,6 +33,8 @@ from plan_repair.validation.models import (
     DANGLING_STEP,
     DEP_CYCLE,
     DUPLICATE_STEP,
+    MISSING_EVIDENCE,
+    MISSING_OPERATION,
     MISSING_STOP_CONDITION,
     ORDERING,
     SCHEMA,
@@ -41,6 +46,8 @@ from plan_repair.validation.models import (
 from plan_repair.validation.paths import (
     input_from_path,
     path_from_loc,
+    required_evidence_path,
+    required_operation_path,
     step_path,
     stop_condition_path,
     tool_path,
@@ -71,6 +78,7 @@ def validate_plan(plan: AgentPlan | Mapping[str, Any], task: AgentTask) -> PlanV
     errors.extend(_duplicate_errors(parsed))
     errors.extend(_dangling_errors(parsed))
     errors.extend(_missing_stop_condition(parsed))
+    errors.extend(_coverage_errors(parsed, task))
     return PlanValidationResult(valid=not errors, errors=errors)
 
 
@@ -301,6 +309,38 @@ def _missing_stop_condition(plan: AgentPlan) -> list[ValidationError]:
             message="plan has no stop_condition",
         )
     ]
+
+
+def _coverage_errors(plan: AgentPlan, task: AgentTask) -> list[ValidationError]:
+    """Report requirements of the task that no step claims to satisfy.
+
+    The only operation here is a set difference between what the steps declare in ``produces``
+    and what the task requires: no requirement name, tool name or step id is known to this code,
+    which is what lets the same check score an unrelated pipeline.
+    """
+    produced = {tag for step in plan.steps for tag in step.produces}
+    errors: list[ValidationError] = []
+    for name in task.required_evidence:
+        if name not in produced:
+            errors.append(
+                ValidationError(
+                    type=MISSING_EVIDENCE,
+                    step_ids=[],
+                    paths=[required_evidence_path(name)],
+                    message=f"no step produces required evidence {name!r}",
+                )
+            )
+    for name in task.required_operations:
+        if name not in produced:
+            errors.append(
+                ValidationError(
+                    type=MISSING_OPERATION,
+                    step_ids=[],
+                    paths=[required_operation_path(name)],
+                    message=f"no step performs required operation {name!r}",
+                )
+            )
+    return errors
 
 
 __all__ = ["validate_plan"]

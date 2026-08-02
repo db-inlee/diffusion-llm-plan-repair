@@ -2,6 +2,7 @@
 
 from plan_repair.schema.corruption import (
     BROKEN_DEPENDENCY,
+    DROP_REQUIRED_STEP,
     DUPLICATE_STEP,
     MISSING_STOP_CONDITION,
     STEP_DELETION,
@@ -15,6 +16,7 @@ from plan_repair.schema.task import AgentTask, ToolSpec
 
 __all__ = [
     "BROKEN_DEPENDENCY",
+    "DROP_REQUIRED_STEP",
     "DUPLICATE_STEP",
     "MISSING_STOP_CONDITION",
     "STEP_DELETION",

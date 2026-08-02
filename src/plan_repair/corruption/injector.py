@@ -14,6 +14,7 @@ from typing import Any
 
 from plan_repair.schema.corruption import (
     BROKEN_DEPENDENCY,
+    DROP_REQUIRED_STEP,
     DUPLICATE_STEP,
     MISSING_STOP_CONDITION,
     STEP_DELETION,
@@ -23,8 +24,11 @@ from plan_repair.schema.corruption import (
     InjectedError,
 )
 from plan_repair.schema.plan import AgentPlan, Step
+from plan_repair.schema.task import AgentTask
 from plan_repair.validation.paths import (
     input_from_path,
+    required_evidence_path,
+    required_operation_path,
     step_path,
     stop_condition_path,
     tool_path,
@@ -236,6 +240,51 @@ def inject_duplicate_step(
         broken_plan=broken,
         injected=[injected],
         preserved_step_ids=_preserved(broken, damaged={duplicate.id}),
+    )
+
+
+def inject_drop_required_step(
+    plan: AgentPlan, task: AgentTask, *, requirement: str
+) -> CorruptionResult:
+    """Delete the step that satisfies ``requirement``.
+
+    Structurally this is a step deletion, but it is aimed: the target is chosen by what the step
+    contributes to the task rather than by where it sits in the graph, so the damage is both
+    structural (the references it leaves broken) and semantic (a requirement nothing covers any
+    more). It is the only injector that needs the task, because only the task knows what is
+    required.
+
+    Refuses a requirement covered by several steps: dropping one of them would leave the
+    coverage intact and the corruption would not be what its name says.
+    """
+    if requirement in task.required_evidence:
+        requirement_path = required_evidence_path(requirement)
+    elif requirement in task.required_operations:
+        requirement_path = required_operation_path(requirement)
+    else:
+        raise ValueError(f"task {task.task_id!r} does not require {requirement!r}")
+
+    producers = [step for step in plan.steps if requirement in step.produces]
+    if not producers:
+        raise ValueError(f"no step produces {requirement!r}")
+    if len(producers) > 1:
+        raise ValueError(
+            f"{len(producers)} steps produce {requirement!r} "
+            f"({', '.join(step.id for step in producers)}); dropping one would not uncover it"
+        )
+
+    result = inject_step_deletion(plan, step_id=producers[0].id)
+    deletion = result.injected[0]
+    injected = InjectedError(
+        corruption_type=DROP_REQUIRED_STEP,
+        damaged_step_ids=deletion.damaged_step_ids,
+        damaged_paths=[*deletion.damaged_paths, requirement_path],
+        detail={**deletion.detail, "requirement": requirement},
+    )
+    return CorruptionResult(
+        broken_plan=result.broken_plan,
+        injected=[injected],
+        preserved_step_ids=result.preserved_step_ids,
     )
 
 

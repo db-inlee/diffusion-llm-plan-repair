@@ -64,6 +64,9 @@ M2_GOLDEN = {
 #      accepted in Ticket 002 (B-3, B-4). The two deletions meet at n_csv, which is reported
 #      twice for two different true facts: its own reference is broken (co is gone) *and* nothing
 #      consumes it any more (join is gone).
+#      Ticket 004 adds the semantic check, and it fires here too: the join step was the only one
+#      claiming the required 'join' operation. Deleting co uncovers nothing — cm claims 'cleaning'
+#      as well — so exactly one coverage error joins the set.
 M3_SPECS = [spec(STEP_DELETION, "join"), spec(STEP_DELETION, "co")]
 M3_GOLDEN = {
     ("unknown_dependency", ("n_csv",), ("$.steps[?n_csv].input_from",)),
@@ -71,6 +74,7 @@ M3_GOLDEN = {
     ("dangling_step", ("cm",), ("$.steps[?cm]",)),
     ("dangling_step", ("n_csv",), ("$.steps[?n_csv]",)),
     ("dangling_step", ("n_db",), ("$.steps[?n_db]",)),
+    ("missing_operation", (), ("$.required_operations[?join]",)),
 }
 
 # M-5  masking: the cycle makes topological order undefined, so the ordering check is skipped
@@ -122,6 +126,9 @@ MA3_GOLDEN = {
     ("dangling_step", ("e_web",), ("$.steps[?e_web]",)),
     ("dangling_step", ("e_paper",), ("$.steps[?e_paper]",)),
     ("dangling_step", ("e_news",), ("$.steps[?e_news]",)),
+    # dedupe was the only step claiming the required 'dedup' operation; p_paper claims nothing,
+    # and the extract steps that carry the evidence tags survive.
+    ("missing_operation", (), ("$.required_operations[?dedup]",)),
 }
 
 # The paper and news branches never lead back to s_web, so they stay out of the component.

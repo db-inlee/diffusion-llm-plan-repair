@@ -183,6 +183,7 @@ def test_b4_step_deletion_in_the_middle_of_a_chain():
         "tool": "clean_outlier",
         "arguments": {},
         "input_from": ["cm"],
+        "produces": ["cleaning"],
     }
     # cm survives but nothing consumes it any more — now caught by the dangling check.
     assert "cm" in corruption.preserved_step_ids

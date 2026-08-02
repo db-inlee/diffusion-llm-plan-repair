@@ -110,6 +110,7 @@ def test_step_deletion_metadata_and_preserved_ids():
         "tool": "join",
         "arguments": {},
         "input_from": ["n_csv", "n_db"],
+        "produces": ["join"],
     }
     assert len(result.broken_plan.steps) == 19
     assert "join" not in {s.id for s in result.broken_plan.steps}

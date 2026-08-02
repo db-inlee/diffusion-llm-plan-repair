@@ -33,6 +33,20 @@ def stop_condition_path() -> str:
     return STOP_CONDITION_PATH
 
 
+def required_evidence_path(name: str) -> str:
+    """Path of a required evidence entry — a location in the **task**, not the plan.
+
+    Coverage errors report an absence: no step claims the requirement, so there is nothing in the
+    plan to point at. Naming the unmet requirement is what a repairer needs to know.
+    """
+    return f"$.required_evidence[?{name}]"
+
+
+def required_operation_path(name: str) -> str:
+    """Path of a required operation entry — a location in the task (see above)."""
+    return f"$.required_operations[?{name}]"
+
+
 def path_from_loc(loc: tuple[Any, ...], raw_plan: Any) -> tuple[str, list[str]]:
     """Translate a pydantic error location into ``(path, step_ids)``.
 

@@ -16,6 +16,8 @@ ORDERING = "ordering"
 DUPLICATE_STEP = "duplicate_step"
 MISSING_STOP_CONDITION = "missing_stop_condition"
 DANGLING_STEP = "dangling_step"
+MISSING_EVIDENCE = "missing_evidence"
+MISSING_OPERATION = "missing_operation"
 
 # Declared by the ticket's error type union but produced by none of the five checks in this
 # ticket (it belongs to the coverage checks of a later ticket).

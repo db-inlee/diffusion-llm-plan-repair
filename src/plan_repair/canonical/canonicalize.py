@@ -29,6 +29,7 @@ def canonical_step(step: Step) -> dict[str, Any]:
         "tool": step.tool,
         "arguments": step.arguments,
         "input_from": sorted(step.input_from),
+        "produces": sorted(step.produces),
     }
 
 

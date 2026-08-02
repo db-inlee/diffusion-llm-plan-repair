@@ -23,6 +23,10 @@ class Step(BaseModel):
     tool: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     input_from: list[str] = Field(default_factory=list)
+    # Names from the task's ``required_evidence`` / ``required_operations`` that this step
+    # satisfies. Tagging is explicit rather than inferred from tool names: a naming convention
+    # would only hold for the pipeline it was written against.
+    produces: list[str] = Field(default_factory=list)
 
 
 class AgentPlan(BaseModel):

@@ -16,6 +16,7 @@ WRONG_TOOL = "wrong_tool"
 WRONG_ORDERING = "wrong_ordering"
 DUPLICATE_STEP = "duplicate_step"
 MISSING_STOP_CONDITION = "missing_stop_condition"
+DROP_REQUIRED_STEP = "drop_required_step"
 
 
 class InjectedError(BaseModel):
