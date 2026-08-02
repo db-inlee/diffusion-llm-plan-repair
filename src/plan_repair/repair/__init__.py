@@ -21,6 +21,7 @@ from plan_repair.repair.deterministic import (
     HANDLED_ERROR_TYPES,
     DeterministicRepairer,
 )
+from plan_repair.repair.diffusion_mock import NoisyDiffusion, OracleDiffusion
 from plan_repair.repair.llm_client import (
     LLMClient,
     LLMError,
@@ -29,11 +30,23 @@ from plan_repair.repair.llm_client import (
 )
 from plan_repair.repair.mock import IdentityRepairer, OracleRepairer
 from plan_repair.repair.plan_io import PlanParseError, parse_plan, plan_to_json, task_to_json
+from plan_repair.repair.remask import (
+    DEFAULT_PLACEHOLDER,
+    MaskSpec,
+    PlanSequence,
+    StepSpan,
+    fill_masked,
+    mask_spec,
+    plan_to_sequence,
+    render_masked,
+    sequence_to_plan,
+)
 from plan_repair.repair.scoring import RepairScore, repair_and_score, score_repair
 
 __all__ = [
     "API_FAILURE",
     "DECLINED_ERROR_TYPES",
+    "DEFAULT_PLACEHOLDER",
     "HANDLED_ERROR_TYPES",
     "PARSE_FAILURE",
     "ARFullRepairer",
@@ -42,16 +55,26 @@ __all__ = [
     "IdentityRepairer",
     "LLMClient",
     "LLMError",
+    "MaskSpec",
+    "NoisyDiffusion",
     "OpenAIClient",
+    "OracleDiffusion",
     "OracleRepairer",
     "PlanParseError",
+    "PlanSequence",
     "RepairFailure",
     "RepairScore",
     "Repairer",
     "ScriptedLLMClient",
+    "StepSpan",
+    "fill_masked",
+    "mask_spec",
     "parse_plan",
     "plan_to_json",
+    "plan_to_sequence",
+    "render_masked",
     "repair_and_score",
     "score_repair",
+    "sequence_to_plan",
     "task_to_json",
 ]
