@@ -7,18 +7,33 @@ the plan doing it, so quality and collateral are always reported together:
 * **execution** — does the repaired plan run to the end?
 * **collateral** — how many healthy steps did the repair change?
 
-Collateral follows the contract of the ticket exactly. A corruption records which steps it
-damaged; every other step of the reference plan is healthy. A healthy step counts as collateral
-when it is present in both the reference and the repaired plan and its **body** differs — body,
-because what matters is whether the work a step does was altered, and the id-free hash from
-Ticket 002 is what compares that. A damaged step coming back to its original form is a repair,
-not collateral, which is why damaged steps are excluded from the count and reported separately as
-``damaged_restored``.
+Collateral is reported by **kind**, not as one number. A single count hid the worst case: a
+repairer that rewrote the plan under fresh ids left nothing to compare id-for-id and scored zero,
+so the most destructive answer looked like the cleanest one. Splitting the count also removes the
+need to weigh one kind of damage against another, which nobody can do non-arbitrarily.
 
-Two things the collateral count deliberately does not absorb, kept as their own fields so they
-cannot hide inside a zero: steps the repairer removed, and steps it added. Both are measured
-against the broken plan — what the repairer was actually handed — so damage done by the
-corruption is never charged to the repairer.
+A corruption records which steps it damaged; every other step of the reference plan is healthy.
+For each healthy step, what became of it:
+
+* :attr:`collateral_modified` — same id, different body. The work changed under the same name.
+* :attr:`collateral_renamed` — the body survives somewhere under a different id. The work is
+  intact; only its name was rewritten, which still breaks every reference to it.
+* :attr:`collateral_removed` — the body is nowhere in the repaired plan. The work is gone.
+
+Telling *renamed* from *removed* is what closes the blind spot, and it is decided by the id-free
+hash from Ticket 002: if a healthy step's body reappears under another id it was renamed, and if
+it does not, it was lost.
+
+:attr:`spurious_added` sits apart on purpose. A new step may be a legitimate repair rather than
+damage, so it is never folded into the damage counts — it is read as a marker of wholesale
+rewriting. Steps that merely carry a renamed body are not counted here, since that event is
+already reported as a rename.
+
+**What the repairer is answerable for.** Damage the corruption did is never charged to the
+repairer: a healthy step is only in scope if the repairer actually received it intact, so a step
+the corruption deleted does not count as removed by whoever failed to bring it back. A damaged
+step returning to its original form is a repair rather than collateral, and is reported on its
+own as ``damaged_restored``.
 """
 
 from collections.abc import Iterable
@@ -43,10 +58,15 @@ class RepairScore(BaseModel):
     error_types_remaining: list[str]
     # execution
     runtime_succeeded: bool
-    # collateral
-    collateral: int
-    collateral_step_ids: list[str]
+    # collateral, by kind — never summed into one number here
+    collateral_modified: int
+    collateral_renamed: int
+    collateral_removed: int
+    modified_step_ids: list[str]
+    renamed_step_ids: list[str]
     removed_step_ids: list[str]
+    # not damage, but the signature of a rewrite
+    spurious_added: int
     added_step_ids: list[str]
     # repair itself
     damaged_total: int
@@ -56,6 +76,16 @@ class RepairScore(BaseModel):
     def solved(self) -> bool:
         """Whether the plan came out clean on all three axes."""
         return self.valid and self.runtime_succeeded
+
+    @property
+    def collateral_total(self) -> int:
+        """Every healthy step the repair damaged, of whatever kind.
+
+        A convenience for reading a table, not a verdict: the kinds are reported separately
+        because how a step was damaged matters, and weighing them against each other is a
+        decision for the comparison ticket.
+        """
+        return self.collateral_modified + self.collateral_renamed + self.collateral_removed
 
 
 def score_repair(
@@ -70,16 +100,40 @@ def score_repair(
     """Score ``repaired_plan`` against the plan it should have been restored to."""
     damaged = set(damaged_step_ids)
     reference_bodies = _bodies(reference_plan)
+    broken_bodies = _bodies(broken_plan)
     repaired_bodies = _bodies(repaired_plan)
-    broken_ids = {step.id for step in broken_plan.steps}
-    repaired_ids = set(repaired_bodies)
+    surviving_bodies = set(repaired_bodies.values())
 
-    healthy = [step_id for step_id in reference_bodies if step_id not in damaged]
-    collateral = [
+    # Only steps the repairer actually received intact are its responsibility: a step the
+    # corruption already deleted cannot be removed again by whoever did not restore it.
+    in_scope = [
         step_id
-        for step_id in healthy
-        if step_id in repaired_bodies and repaired_bodies[step_id] != reference_bodies[step_id]
+        for step_id, body in reference_bodies.items()
+        if step_id not in damaged and broken_bodies.get(step_id) == body
     ]
+
+    modified: list[str] = []
+    renamed: list[str] = []
+    removed: list[str] = []
+    for step_id in in_scope:
+        body = reference_bodies[step_id]
+        if step_id in repaired_bodies:
+            if repaired_bodies[step_id] != body:
+                modified.append(step_id)
+        elif body in surviving_bodies:
+            renamed.append(step_id)
+        else:
+            removed.append(step_id)
+
+    # A step carrying a healthy body under a new id is the rename already counted above, not an
+    # invention; counting it here as well would report one event twice.
+    renamed_bodies = {reference_bodies[step_id] for step_id in renamed}
+    added = sorted(
+        step_id
+        for step_id, body in repaired_bodies.items()
+        if step_id not in reference_bodies and body not in renamed_bodies
+    )
+
     restored = [
         step_id
         for step_id in damaged
@@ -96,10 +150,14 @@ def score_repair(
         errors_remaining=len(validation.errors),
         error_types_remaining=sorted({error.type for error in validation.errors}),
         runtime_succeeded=run.succeeded,
-        collateral=len(collateral),
-        collateral_step_ids=collateral,
-        removed_step_ids=sorted(broken_ids - repaired_ids),
-        added_step_ids=sorted(repaired_ids - broken_ids),
+        collateral_modified=len(modified),
+        collateral_renamed=len(renamed),
+        collateral_removed=len(removed),
+        modified_step_ids=modified,
+        renamed_step_ids=renamed,
+        removed_step_ids=removed,
+        spurious_added=len(added),
+        added_step_ids=added,
         damaged_total=len(damaged),
         damaged_restored=len(restored),
     )

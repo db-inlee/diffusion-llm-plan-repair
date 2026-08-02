@@ -149,7 +149,7 @@ def test_a_well_formed_answer_is_scored_as_a_repair(domain):
 
     assert repaired == plan
     assert score.solved
-    assert score.collateral == 0
+    assert score.collateral_total == 0
 
 
 def test_a_fenced_answer_is_accepted():
@@ -181,7 +181,7 @@ def test_an_unusable_answer_is_a_failed_repair_not_a_crash(answer, why):
 
     assert repaired == corruption.broken_plan, why  # handed back untouched
     assert not score.solved
-    assert score.collateral == 0
+    assert score.collateral_total == 0
     assert [failure.kind for failure in repairer.failures] == [PARSE_FAILURE]
 
 
@@ -235,7 +235,7 @@ def test_collateral_catches_a_rewrite_that_disturbs_healthy_steps():
 
     _, score = score_with(ARFullRepairer(answers(plan_to_json(rewritten))), task, plan, corruption)
 
-    assert score.collateral == 3
+    assert score.collateral_modified == 3
     assert score.solved  # a plan can be valid and still have cost healthy steps
 
 
@@ -248,7 +248,7 @@ def test_a_faithful_local_edit_costs_nothing():
 
     _, score = score_with(ARLocalRepairer(answers(plan_to_json(edited))), task, plan, corruption)
 
-    assert score.collateral == 0
+    assert score.collateral_total == 0
     assert score.damaged_restored == 1
     assert score.solved
 
@@ -264,7 +264,7 @@ def test_the_two_modes_are_scored_on_the_same_scale():
     _, local = score_with(ARLocalRepairer(answers(plan_to_json(plan))), task, plan, corruption)
 
     assert full.solved and local.solved
-    assert full.collateral > local.collateral == 0
+    assert full.collateral_total > local.collateral_total == 0
 
 
 @pytest.mark.parametrize("domain", DOMAINS)
@@ -284,7 +284,7 @@ def test_missing_stop_condition_is_repairable_by_either_mode(domain):
             damaged_step_ids=corruption.injected[0].damaged_step_ids,
         )
         assert score.solved
-        assert score.collateral == 0
+        assert score.collateral_total == 0
 
 
 def test_one_call_per_repair():

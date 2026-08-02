@@ -81,7 +81,7 @@ def test_missing_stop_condition_is_filled_from_the_terminal(domain):
 
     assert repaired.stop_condition == f"terminal step {plan.steps[-1].id} completed"
     assert score.solved
-    assert score.collateral == 0
+    assert score.collateral_total == 0
 
 
 @pytest.mark.parametrize("domain", DOMAINS)
@@ -93,7 +93,7 @@ def test_an_unknown_dependency_is_dropped(domain):
     repaired, score = repaired_for(corruption, task, plan)
 
     assert validate_plan(repaired, task).errors_of_type(UNKNOWN_DEPENDENCY) == []
-    assert score.collateral == 0
+    assert score.collateral_total == 0
     # The reference it was meant to consume is gone rather than restored: the rules cannot know
     # what the plan intended, so the step comes back valid but poorer than the original.
     assert score.damaged_restored == 0
@@ -107,8 +107,9 @@ def test_a_duplicated_step_is_removed():
 
     assert [step.id for step in repaired.steps] == [step.id for step in plan.steps]
     assert score.solved
-    assert score.collateral == 0
-    assert score.removed_step_ids == ["agg_dup"]
+    # The copy was the damaged step, so deleting it is the repair — nothing healthy was touched.
+    assert score.collateral_total == 0
+    assert score.removed_step_ids == []
 
 
 def test_a_complete_duplicate_is_removed_even_under_the_same_id():
@@ -154,7 +155,7 @@ def test_ordering_is_restored_topologically(domain):
     assert validate_plan(repaired, task).errors_of_type(ORDERING) == []
     assert score.solved
     # Reordering moves steps without rewriting any of them, so nothing is charged as collateral.
-    assert score.collateral == 0
+    assert score.collateral_total == 0
     assert [step.id for step in repaired.steps] == [step.id for step in plan.steps]
 
 
@@ -184,7 +185,7 @@ def test_a_cycle_is_left_alone():
 
     assert validate_plan(repaired, task).errors_of_type(DEP_CYCLE)
     assert not score.solved
-    assert score.collateral == 0
+    assert score.collateral_total == 0
 
 
 def test_a_deleted_step_is_not_restored():
@@ -251,5 +252,5 @@ def test_a_plan_with_both_kinds_gets_the_handled_part_only():
     assert MISSING_STOP_CONDITION not in remaining  # handled
     assert UNKNOWN_TOOL in remaining  # declined
     assert not score.solved
-    assert score.collateral == 0
+    assert score.collateral_total == 0
     assert DUPLICATE_STEP not in remaining
