@@ -11,6 +11,11 @@ dist/
 .ruff_cache/
 .pytest_cache/
 
+# Secrets: the API key is read from the environment and must never reach a commit.
+.env
+.env.*
+*.key
+
 # Editors / OS
 .DS_Store
 

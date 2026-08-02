@@ -8,23 +8,50 @@ Nothing in this package imports torch: the interface layer knows nothing about m
 hardware, and the model backends will sit behind it as a separate layer.
 """
 
+from plan_repair.repair.ar import (
+    API_FAILURE,
+    PARSE_FAILURE,
+    ARFullRepairer,
+    ARLocalRepairer,
+    RepairFailure,
+)
 from plan_repair.repair.base import Repairer
 from plan_repair.repair.deterministic import (
     DECLINED_ERROR_TYPES,
     HANDLED_ERROR_TYPES,
     DeterministicRepairer,
 )
+from plan_repair.repair.llm_client import (
+    LLMClient,
+    LLMError,
+    OpenAIClient,
+    ScriptedLLMClient,
+)
 from plan_repair.repair.mock import IdentityRepairer, OracleRepairer
+from plan_repair.repair.plan_io import PlanParseError, parse_plan, plan_to_json, task_to_json
 from plan_repair.repair.scoring import RepairScore, repair_and_score, score_repair
 
 __all__ = [
+    "API_FAILURE",
     "DECLINED_ERROR_TYPES",
     "HANDLED_ERROR_TYPES",
+    "PARSE_FAILURE",
+    "ARFullRepairer",
+    "ARLocalRepairer",
     "DeterministicRepairer",
     "IdentityRepairer",
+    "LLMClient",
+    "LLMError",
+    "OpenAIClient",
     "OracleRepairer",
+    "PlanParseError",
+    "RepairFailure",
     "RepairScore",
     "Repairer",
+    "ScriptedLLMClient",
+    "parse_plan",
+    "plan_to_json",
     "repair_and_score",
     "score_repair",
+    "task_to_json",
 ]
