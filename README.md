@@ -76,8 +76,40 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 ## 개발
 
 ```
-uv sync            # 3.12 가상환경 + 의존성
-uv run pytest      # 테스트
+uv sync            # 3.12 가상환경 + 의존성 (GPU 불필요)
+uv run pytest      # 테스트 — 전부 모델 없이 돈다
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
+```
+
+핵심 의존성에 torch가 없다. 마스킹·토큰 정렬·채점·mock 백엔드는 전부 노트북에서 돌고,
+diffusion 추론만 GPU가 필요하다.
+
+## diffusion 실험 실행 (GPU)
+
+```bash
+git clone <repo> && cd diffusion_plan_repair
+pip install -e '.[gpu]'          # torch + accelerate + bitsandbytes
+
+python scripts/run_diffusion_experiment.py --model llada --out results/llada
+python scripts/run_diffusion_experiment.py --model dream --out results/dream
+```
+
+케이스(모델 × 도메인 × corruption)마다 결과 JSON을 즉시 쓰고, 다시 실행하면 **없는 것만**
+이어서 돈다 — 세션이 끊겨도 중간부터다. 진행바는 이미 끝난 케이스를 완료로 세고 시작한다.
+
+```bash
+--model {llada,dream,all}     --domain {domain_a,domain_b,all}
+--corruption {broken_dependency,dependency_cycle,wrong_tool,duplicate_step,
+              step_deletion,wrong_ordering,missing_stop_condition,drop_required_step,all}
+--steps 64        # denoising 패스 수
+--temperature 0   # 0이면 greedy(재현 가능), >0이면 샘플링
+--limit N         # 새 케이스 N개만
+--force           # 이미 끝난 것도 다시
+```
+
+GPU 없이 파이프라인만 확인하려면 백엔드를 mock으로 바꾼다:
+
+```bash
+python scripts/run_diffusion_experiment.py --backend oracle --out /tmp/dry
 ```

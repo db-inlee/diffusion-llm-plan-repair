@@ -37,6 +37,7 @@ from plan_repair.repair.dllm_backend import (
     FillRequest,
     OracleBackend,
 )
+from plan_repair.repair.dllm_backend_torch import TorchDLLMBackend, torch_available
 from plan_repair.repair.llm_client import (
     LLMClient,
     LLMError,
@@ -108,6 +109,7 @@ __all__ = [
     "StepSpan",
     "TokenAlignment",
     "TokenizationError",
+    "TorchDLLMBackend",
     "align_mask",
     "decode_spans",
     "fill_masked",
@@ -121,4 +123,5 @@ __all__ = [
     "score_repair",
     "sequence_to_plan",
     "task_to_json",
+    "torch_available",
 ]

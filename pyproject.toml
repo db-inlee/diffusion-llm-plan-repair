@@ -3,9 +3,15 @@ name = "diffusion-llm-plan-repair"
 version = "0.1.0"
 description = "Verifier-guided plan repair evaluation harness"
 requires-python = ">=3.12,<3.13"
-# openai is the only backend dependency: the AR repairer calls an API, so no ML stack is needed.
-# It is imported lazily, so the package stays usable when it is absent.
-dependencies = ["pydantic>=2.7", "openai>=1.0", "transformers>=4.44"]
+# The core stays runnable on a laptop: openai for the AR repairer, transformers for tokenizers
+# only (it installs without torch), tqdm for the experiment runner. Both model backends import
+# their heavy dependency lazily, so the package is usable when it is absent.
+dependencies = ["pydantic>=2.7", "openai>=1.0", "transformers>=4.44", "tqdm>=4.66"]
+
+[project.optional-dependencies]
+# Diffusion inference only. Everything else — masking, alignment, scoring, the mock backends —
+# runs without any of this, which is what lets the pipeline be developed and tested off-GPU.
+gpu = ["torch>=2.1", "accelerate>=0.30", "bitsandbytes>=0.43"]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,8 +37,13 @@ select = ["E", "F", "I", "B", "UP", "SIM", "N", "RUF"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 warn_unreachable = true
+
+# The GPU extra is not installed off-GPU, and the backends import it lazily on purpose.
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "tqdm.*"]
+ignore_missing_imports = true
 
 # Tests trade type rigor for writing speed; the contract code in src/ stays strict.
 [[tool.mypy.overrides]]
