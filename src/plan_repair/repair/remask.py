@@ -20,6 +20,11 @@ not in the broken plan has no span and cannot be regenerated, and the order of t
 property of the layout rather than of any one span. Both limits are structural, not oversights;
 they are recorded in the mask spec (:attr:`MaskSpec.unmaskable_step_ids`) and in the tests rather
 than papered over.
+
+**Where steps meet.** The separator between two steps belongs to this module, not to whatever
+fills the mask — see :func:`normalise_filling`. Two adjacent masked steps share that separator,
+so a regeneration hands it back along with the step and the template would otherwise add a second
+one.
 """
 
 import json
@@ -132,7 +137,30 @@ def fill_masked(
     unknown = set(replacements) - set(spec.masked_step_ids)
     if unknown:
         raise ValueError(f"cannot fill steps that are not masked: {sorted(unknown)}")
-    return _rebuild(sequence, replacements)
+    normalised = {
+        step_id: None if text is None else normalise_filling(text)
+        for step_id, text in replacements.items()
+    }
+    return _rebuild(sequence, normalised)
+
+
+def normalise_filling(text: str) -> str:
+    """Drop the separators a filling arrives with; the template owns them.
+
+    Two masked steps that sit next to each other share the comma and newline between them, and a
+    token holding that separator belongs to the mask — so a regeneration hands back the step
+    *and* the punctuation around it. Reassembly then adds its own separator and the result reads
+    ``},,``, which is not valid JSON however good the step was.
+
+    The rule this settles is a division of labour: a filling contributes the body of one step,
+    and where steps meet is decided by the sequence it is being put back into. Only the outermost
+    characters are touched, so commas inside a step — in ``input_from``, in ``arguments`` — are
+    left exactly as the model wrote them.
+
+    This is not repairing malformed output. Nothing is inserted, nothing is re-punctuated, and a
+    filling that is not a step still fails to parse.
+    """
+    return text.strip(" \t\r\n,")
 
 
 def _rebuild(sequence: PlanSequence, replacements: Mapping[str, str | None]) -> str:
@@ -178,6 +206,7 @@ __all__ = [
     "StepSpan",
     "fill_masked",
     "mask_spec",
+    "normalise_filling",
     "plan_to_sequence",
     "render_masked",
     "sequence_to_plan",

@@ -179,9 +179,8 @@ class TorchDLLMBackend:
             from transformers import AutoTokenizer
         except ModuleNotFoundError as exc:  # pragma: no cover - depends on the environment
             raise DLLMError(f"{self.name}: transformers is not installed") from exc
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id, trust_remote_code=self.trust_remote_code
-        )
+        load: Any = AutoTokenizer.from_pretrained
+        self._tokenizer = load(self.model_id, trust_remote_code=self.trust_remote_code)
         return self._tokenizer
 
     def settings(self) -> dict[str, Any]:

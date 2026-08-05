@@ -144,7 +144,8 @@ def build_tokenizer(model: str, backend_kind: str) -> Any:
     from transformers import AutoTokenizer
 
     _, model_id, _, offsets = MODELS[model]
-    raw = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    load: Any = AutoTokenizer.from_pretrained
+    raw = load(model_id, trust_remote_code=True)
     return (
         HuggingFaceTokenizer(raw, model) if offsets == "fast" else ByteOffsetTokenizer(raw, model)
     )
