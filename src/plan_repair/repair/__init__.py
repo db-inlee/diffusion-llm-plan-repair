@@ -21,6 +21,13 @@ from plan_repair.repair.deterministic import (
     HANDLED_ERROR_TYPES,
     DeterministicRepairer,
 )
+from plan_repair.repair.diagnostics import (
+    ParseFailure,
+    RepairDiagnostics,
+    diagnose,
+    excerpt_around,
+    summarise,
+)
 from plan_repair.repair.diffusion import (
     ALIGNMENT_FAILURE,
     BACKEND_FAILURE,
@@ -100,8 +107,10 @@ __all__ = [
     "OracleBackend",
     "OracleDiffusion",
     "OracleRepairer",
+    "ParseFailure",
     "PlanParseError",
     "PlanSequence",
+    "RepairDiagnostics",
     "RepairFailure",
     "RepairScore",
     "Repairer",
@@ -112,6 +121,8 @@ __all__ = [
     "TorchDLLMBackend",
     "align_mask",
     "decode_spans",
+    "diagnose",
+    "excerpt_around",
     "fill_masked",
     "mask_spec",
     "masked_token_ids",
@@ -122,6 +133,7 @@ __all__ = [
     "repair_and_score",
     "score_repair",
     "sequence_to_plan",
+    "summarise",
     "task_to_json",
     "torch_available",
 ]

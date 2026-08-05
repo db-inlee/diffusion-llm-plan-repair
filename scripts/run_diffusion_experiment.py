@@ -53,6 +53,7 @@ from plan_repair.repair import (  # noqa: E402
     TorchDLLMBackend,
     repair_and_score,
 )
+from plan_repair.repair.diagnostics import summarise  # noqa: E402
 from plan_repair.repair.diffusion import (  # noqa: E402
     DREAM_MASK_TOKEN_ID,
     DREAM_MODEL,
@@ -177,6 +178,12 @@ def run_case(case: Case, backend_kind: str, steps: int, temperature: float) -> d
             repairer.last_alignment.masked_token_count if repairer.last_alignment else None
         ),
         "failures": [failure.model_dump() for failure in repairer.failures],
+        # What the model produced, before anything was parsed. Without this a parse failure has
+        # no explanation, only a line number.
+        "diagnostics": (
+            repairer.last_diagnostics.model_dump() if repairer.last_diagnostics else None
+        ),
+        "backend_diagnostics": (backend.diagnostics() if hasattr(backend, "diagnostics") else None),
         "score": score.model_dump(),
         "solved": score.solved,
         "collateral_total": score.collateral_total,
@@ -257,7 +264,36 @@ def main(argv: list[str] | None = None) -> int:
         f"wrote {len(written)} result file(s) to {arguments.out}"
         + (f", {failed} case(s) errored" if failed else "")
     )
+    report_diagnostics(written)
     return 1 if failed else 0
+
+
+def report_diagnostics(written: list[Path]) -> None:
+    """Say what the batch's parse failures have in common, if anything.
+
+    The first fork when reading a run: failures that still carry mask tokens point at the
+    denoising budget, failures without them point at the format or at the mask boundaries.
+    """
+    results = []
+    for path in written:
+        try:
+            results.append(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            continue
+    summary = summarise(results)
+    if not summary["with_diagnostics"]:
+        return
+    print(
+        f"parse failures: {summary['parse_failures']}/{summary['with_diagnostics']}"
+        f" — of those, {summary['parse_failures_with_mask_tokens_left']} still had mask tokens"
+        f" in the parsed text"
+    )
+    if summary["parse_failures"]:
+        share = summary["share_of_failures_still_masked"]
+        print(
+            "  a high share points at the denoising budget (--steps); a low one at the format "
+            f"or the mask boundaries  [share={share}]"
+        )
 
 
 if __name__ == "__main__":

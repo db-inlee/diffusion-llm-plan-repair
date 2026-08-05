@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.13"
 # The core stays runnable on a laptop: openai for the AR repairer, transformers for tokenizers
 # only (it installs without torch), tqdm for the experiment runner. Both model backends import
 # their heavy dependency lazily, so the package is usable when it is absent.
-dependencies = ["pydantic>=2.7", "openai>=1.0", "transformers>=4.44", "tqdm>=4.66"]
+dependencies = ["pydantic>=2.7", "openai>=1.0", "transformers>=4.57,<5", "tqdm>=4.66"]
 
 [project.optional-dependencies]
 # Diffusion inference only. Everything else — masking, alignment, scoring, the mock backends —

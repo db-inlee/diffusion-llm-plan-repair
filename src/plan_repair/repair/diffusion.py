@@ -23,6 +23,7 @@ model behind it.
 """
 
 from plan_repair.repair.ar import PARSE_FAILURE, RepairFailure
+from plan_repair.repair.diagnostics import RepairDiagnostics, diagnose
 from plan_repair.repair.dllm_backend import DLLMBackend, DLLMError, FillRequest
 from plan_repair.repair.plan_io import PlanParseError
 from plan_repair.repair.remask import (
@@ -65,6 +66,8 @@ class DiffusionRepairer:
         self.failures: list[RepairFailure] = []
         self.last_mask: MaskSpec | None = None
         self.last_alignment: TokenAlignment | None = None
+        # What the model produced last time, kept whether or not it parsed.
+        self.last_diagnostics: RepairDiagnostics | None = None
 
     def repair(
         self,
@@ -98,9 +101,18 @@ class DiffusionRepairer:
             return self._give_up(broken_plan, BACKEND_FAILURE, str(exc))
 
         try:
-            return sequence_to_plan(filled)
+            repaired = sequence_to_plan(filled)
         except PlanParseError as exc:
+            # The text is kept before anything else happens to it: this is the only point where
+            # what the model actually produced still exists.
+            self.last_diagnostics = diagnose(
+                raw_text=filled, fillings=filling, mask_token=self.mask_token, error=exc
+            )
             return self._give_up(broken_plan, PARSE_FAILURE, str(exc))
+        self.last_diagnostics = diagnose(
+            raw_text=filled, fillings=filling, mask_token=self.mask_token
+        )
+        return repaired
 
     def _give_up(self, broken_plan: AgentPlan, kind: str, detail: str) -> AgentPlan:
         self.failures.append(RepairFailure(repairer=self.name, kind=kind, detail=detail))

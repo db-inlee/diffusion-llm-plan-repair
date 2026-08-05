@@ -62,6 +62,9 @@ class TorchDLLMBackend:
         self.trust_remote_code = trust_remote_code
         self._tokenizer = tokenizer
         self._model: Any = None
+        # Observation of the last fill, in tokens — recorded, never acted on.
+        self.last_masked_positions: int | None = None
+        self.last_mask_tokens_left: int | None = None
 
     # --- the interface ---------------------------------------------------------------------
 
@@ -81,6 +84,10 @@ class TorchDLLMBackend:
                 f"{self.name}: denoising returned {len(filled)} tokens for {len(prompt)}"
             )
         _assert_frozen_positions_untouched(prompt, filled, self.mask_token_id, self.name)
+        # Counted before decoding, because a tokenizer that drops special tokens would hide an
+        # unfinished sequence. This is the reliable answer to "did denoising run out of passes?".
+        self.last_masked_positions = sum(1 for token in prompt if token == self.mask_token_id)
+        self.last_mask_tokens_left = sum(1 for token in filled if token == self.mask_token_id)
         return dict(decode_spans(alignment, filled, self._require_tokenizer()))
 
     # --- the model -------------------------------------------------------------------------
@@ -187,6 +194,18 @@ class TorchDLLMBackend:
             "temperature": self.temperature,
             "quantize_4bit": self.quantize_4bit,
             "decoding": "greedy" if self.temperature == 0 else "sampled",
+        }
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Token-level facts about the last fill.
+
+        ``mask_tokens_left`` above zero means denoising ended with the sequence still partly
+        masked — the passes ran out before the positions did.
+        """
+        return {
+            "masked_positions": self.last_masked_positions,
+            "mask_tokens_left": self.last_mask_tokens_left,
+            "steps": self.steps,
         }
 
 
