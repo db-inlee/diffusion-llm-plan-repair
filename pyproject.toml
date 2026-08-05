@@ -5,7 +5,7 @@ description = "Verifier-guided plan repair evaluation harness"
 requires-python = ">=3.12,<3.13"
 # openai is the only backend dependency: the AR repairer calls an API, so no ML stack is needed.
 # It is imported lazily, so the package stays usable when it is absent.
-dependencies = ["pydantic>=2.7", "openai>=1.0"]
+dependencies = ["pydantic>=2.7", "openai>=1.0", "transformers>=4.44"]
 
 [build-system]
 requires = ["hatchling"]

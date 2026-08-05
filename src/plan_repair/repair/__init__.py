@@ -21,7 +21,22 @@ from plan_repair.repair.deterministic import (
     HANDLED_ERROR_TYPES,
     DeterministicRepairer,
 )
+from plan_repair.repair.diffusion import (
+    ALIGNMENT_FAILURE,
+    BACKEND_FAILURE,
+    DiffusionRepairer,
+    DreamRepairer,
+    LLaDARepairer,
+)
 from plan_repair.repair.diffusion_mock import NoisyDiffusion, OracleDiffusion
+from plan_repair.repair.dllm_backend import (
+    DLLMBackend,
+    DLLMError,
+    EchoBackend,
+    FailingBackend,
+    FillRequest,
+    OracleBackend,
+)
 from plan_repair.repair.llm_client import (
     LLMClient,
     LLMError,
@@ -42,22 +57,46 @@ from plan_repair.repair.remask import (
     sequence_to_plan,
 )
 from plan_repair.repair.scoring import RepairScore, repair_and_score, score_repair
+from plan_repair.repair.tokenization import (
+    ByteOffsetTokenizer,
+    HuggingFaceTokenizer,
+    OffsetTokenizer,
+    TokenAlignment,
+    TokenizationError,
+    align_mask,
+    decode_spans,
+    masked_token_ids,
+)
 
 __all__ = [
+    "ALIGNMENT_FAILURE",
     "API_FAILURE",
+    "BACKEND_FAILURE",
     "DECLINED_ERROR_TYPES",
     "DEFAULT_PLACEHOLDER",
     "HANDLED_ERROR_TYPES",
     "PARSE_FAILURE",
     "ARFullRepairer",
     "ARLocalRepairer",
+    "ByteOffsetTokenizer",
+    "DLLMBackend",
+    "DLLMError",
     "DeterministicRepairer",
+    "DiffusionRepairer",
+    "DreamRepairer",
+    "EchoBackend",
+    "FailingBackend",
+    "FillRequest",
+    "HuggingFaceTokenizer",
     "IdentityRepairer",
     "LLMClient",
     "LLMError",
+    "LLaDARepairer",
     "MaskSpec",
     "NoisyDiffusion",
+    "OffsetTokenizer",
     "OpenAIClient",
+    "OracleBackend",
     "OracleDiffusion",
     "OracleRepairer",
     "PlanParseError",
@@ -67,8 +106,13 @@ __all__ = [
     "Repairer",
     "ScriptedLLMClient",
     "StepSpan",
+    "TokenAlignment",
+    "TokenizationError",
+    "align_mask",
+    "decode_spans",
     "fill_masked",
     "mask_spec",
+    "masked_token_ids",
     "parse_plan",
     "plan_to_json",
     "plan_to_sequence",
