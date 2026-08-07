@@ -1,0 +1,282 @@
+{
+  "case": {
+    "model": "dream",
+    "domain": "domain_a",
+    "corruption": "duplicate_step"
+  },
+  "backend": {
+    "backend": "dream",
+    "model_id": "Dream-org/Dream-v0-Instruct-7B",
+    "mask_token_id": 151666,
+    "steps": 64,
+    "temperature": 0.0,
+    "quantize_4bit": true,
+    "decoding": "greedy"
+  },
+  "damaged_step_ids": [
+    "f_web_dup"
+  ],
+  "masked_step_ids": [
+    "f_web",
+    "f_web_dup"
+  ],
+  "masked_token_count": 63,
+  "failures": [
+    {
+      "repairer": "dream",
+      "kind": "parse",
+      "detail": "the answer was not valid JSON: Expecting ',' delimiter: line 7 column 9 (char 458)"
+    }
+  ],
+  "diagnostics": {
+    "raw_text": "{\n  \"goal\": \"경쟁 LLM 추론 최적화 기술 동향 비교 리포트\",\n  \"steps\": [\n    {\"id\": \"s_web\", \"tool\": \"search_web\", \"arguments\": {\"query\": \"LLM inference optimization 2026\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_paper\", \"tool\": \"search_papers\", \"arguments\": {\"query\": \"LLM inference optimization\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_news\", \"tool\": \"search_news\", \"arguments\": {\"query\": \"LLM 추론 최적화 업계 동향\"}, \"input_from\": [], \"produces\": []},\n    \" \" \" \" \" \" \" \" \" \" \" \"argumentsarguments,\n    \" \" \" \" \" \" \" \"\",\",\",argumentsarguments \" \" \" \" \" \" \" \" \"produ produceces\": \" []},\n},\n    {\"id\": \"f_paper\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_paper\"], \"produces\": []},\n    {\"id\": \"f_news\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_news\"], \"produces\": []},\n    {\"id\": \"p_web\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_web\"], \"produces\": []},\n    {\"id\": \"p_paper\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_paper\"], \"produces\": []},\n    {\"id\": \"p_news\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_news\"], \"produces\": []},\n    {\"id\": \"e_web\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_web\"], \"produces\": [\"web_findings\"]},\n    {\"id\": \"e_paper\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_paper\"], \"produces\": [\"paper_findings\"]},\n    {\"id\": \"e_news\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_news\"], \"produces\": [\"news_findings\"]},\n    {\"id\": \"dedupe\", \"tool\": \"dedupe\", \"arguments\": {}, \"input_from\": [\"e_web\", \"e_paper\", \"e_news\"], \"produces\": [\"dedup\"]},\n    {\"id\": \"xcheck\", \"tool\": \"cross_check\", \"arguments\": {}, \"input_from\": [\"dedupe\"], \"produces\": [\"cross_check\"]},\n    {\"id\": \"vsrc\", \"tool\": \"validate_sources\", \"arguments\": {}, \"input_from\": [\"xcheck\"], \"produces\": [\"verified_sources\", \"source_validation\"]},\n    {\"id\": \"rank\", \"tool\": \"rank_relevance\", \"arguments\": {}, \"input_from\": [\"vsrc\"], \"produces\": []},\n    {\"id\": \"cite\", \"tool\": \"cite\", \"arguments\": {}, \"input_from\": [\"rank\"], \"produces\": [\"citation\"]},\n    {\"id\": \"synth\", \"tool\": \"synthesize\", \"arguments\": {}, \"input_from\": [\"cite\"], \"produces\": []},\n    {\"id\": \"fmt\", \"tool\": \"format_report\", \"arguments\": {}, \"input_from\": [\"synth\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨\"\n}",
+    "raw_length": 2316,
+    "fillings": {
+      "f_web": " \" \" \" \" \" \" \" \" \" \" \" \"argumentsarguments                                                   ",
+      "f_web_dup": " \" \" \" \" \" \" \" \"\",\",\",argumentsarguments \" \" \" \" \" \" \" \" \"produ produceces\": \" []},\n},\n      "
+    },
+    "mask_token": "<|mask|>",
+    "mask_tokens_remaining": 0,
+    "parsed": false,
+    "parse_failure": {
+      "message": "the answer was not valid JSON: Expecting ',' delimiter: line 7 column 9 (char 458)",
+      "line": 7,
+      "column": 9,
+      "position": 458,
+      "excerpt": " 동향\"}, \"input_from\": [], \"produces\": []},\n    \" \" >>>\" \" \" \" \" \" \" \" \" \"argumentsarguments,\n    \" \" \" \""
+    }
+  },
+  "backend_diagnostics": {
+    "masked_positions": 63,
+    "mask_tokens_left": 0,
+    "steps": 64
+  },
+  "score": {
+    "repairer": "dream",
+    "valid": false,
+    "errors_remaining": 2,
+    "error_types_remaining": [
+      "dangling_step",
+      "duplicate_step"
+    ],
+    "runtime_succeeded": true,
+    "collateral_modified": 0,
+    "collateral_renamed": 0,
+    "collateral_removed": 0,
+    "modified_step_ids": [],
+    "renamed_step_ids": [],
+    "removed_step_ids": [],
+    "spurious_added": 1,
+    "added_step_ids": [
+      "f_web_dup"
+    ],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": false,
+  "collateral_total": 0,
+  "elapsed_seconds": 431.916,
+  "repaired_plan": {
+    "goal": "경쟁 LLM 추론 최적화 기술 동향 비교 리포트",
+    "steps": [
+      {
+        "id": "s_web",
+        "tool": "search_web",
+        "arguments": {
+          "query": "LLM inference optimization 2026"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_paper",
+        "tool": "search_papers",
+        "arguments": {
+          "query": "LLM inference optimization"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_news",
+        "tool": "search_news",
+        "arguments": {
+          "query": "LLM 추론 최적화 업계 동향"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "f_web",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_web"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_web_dup",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_web"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_paper",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_news",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_web",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_web"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_paper",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_news",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "e_web",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_web"
+        ],
+        "produces": [
+          "web_findings"
+        ]
+      },
+      {
+        "id": "e_paper",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_paper"
+        ],
+        "produces": [
+          "paper_findings"
+        ]
+      },
+      {
+        "id": "e_news",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_news"
+        ],
+        "produces": [
+          "news_findings"
+        ]
+      },
+      {
+        "id": "dedupe",
+        "tool": "dedupe",
+        "arguments": {},
+        "input_from": [
+          "e_web",
+          "e_paper",
+          "e_news"
+        ],
+        "produces": [
+          "dedup"
+        ]
+      },
+      {
+        "id": "xcheck",
+        "tool": "cross_check",
+        "arguments": {},
+        "input_from": [
+          "dedupe"
+        ],
+        "produces": [
+          "cross_check"
+        ]
+      },
+      {
+        "id": "vsrc",
+        "tool": "validate_sources",
+        "arguments": {},
+        "input_from": [
+          "xcheck"
+        ],
+        "produces": [
+          "verified_sources",
+          "source_validation"
+        ]
+      },
+      {
+        "id": "rank",
+        "tool": "rank_relevance",
+        "arguments": {},
+        "input_from": [
+          "vsrc"
+        ],
+        "produces": []
+      },
+      {
+        "id": "cite",
+        "tool": "cite",
+        "arguments": {},
+        "input_from": [
+          "rank"
+        ],
+        "produces": [
+          "citation"
+        ]
+      },
+      {
+        "id": "synth",
+        "tool": "synthesize",
+        "arguments": {},
+        "input_from": [
+          "cite"
+        ],
+        "produces": []
+      },
+      {
+        "id": "fmt",
+        "tool": "format_report",
+        "arguments": {},
+        "input_from": [
+          "synth"
+        ],
+        "produces": []
+      }
+    ],
+    "stop_condition": "교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨"
+  }
+}

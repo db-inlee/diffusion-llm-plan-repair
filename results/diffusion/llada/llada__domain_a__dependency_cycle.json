@@ -1,0 +1,301 @@
+{
+  "case": {
+    "model": "llada",
+    "domain": "domain_a",
+    "corruption": "dependency_cycle"
+  },
+  "backend": {
+    "backend": "llada",
+    "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+    "mask_token_id": 126336,
+    "steps": 64,
+    "temperature": 0.0,
+    "quantize_4bit": true,
+    "decoding": "greedy"
+  },
+  "damaged_step_ids": [
+    "s_web"
+  ],
+  "masked_step_ids": [
+    "s_web",
+    "f_web",
+    "p_web",
+    "e_web",
+    "dedupe",
+    "xcheck",
+    "vsrc",
+    "rank",
+    "cite",
+    "synth",
+    "fmt"
+  ],
+  "masked_token_count": 387,
+  "failures": [],
+  "diagnostics": {
+    "raw_text": "{\n  \"goal\": \"경쟁 LLM 추론 최적화 기술 동향 비교 리포트\",\n  \"steps\": [\n    {\"id\": \"s_doc\", \"tool\": \"search_docs\", \"arguments\": {\"query\": \"경쟁 AIM�술\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_paper\", \"tool\": \"search_papers\", \"arguments\": {\"query\": \"LLM inference optimization\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_news\", \"tool\": \"search_news\", \"arguments\": {\"query\": \"LLM 추론 최적화 업계 동향\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"f_doc\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_doc\"], \"produces\": []},\n    {\"id\": \"f_paper\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_paper\"], \"produces\": []},\n    {\"id\": \"f_news\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_news\"], \"produces\": []},\n    {\"id\": \"p_doc\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_doc\"], \"produces\": []},\n    {\"id\": \"p_paper\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_paper\"], \"produces\": []},\n    {\"id\": \"p_news\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_news\"], \"produces\": []},\n    {\"id\": \"e_doc\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_doc\"], \"produces\": [\"doc_findings\"]},\n    {\"id\": \"e_paper\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_paper\"], \"produces\": [\"paper_findings\"]},\n    {\"id\": \"e_news\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_news\"], \"produces\": [\"news_findings\"]},\n    {\"id\": \"c_report\", \"tool\": \"compare_report\", \"arguments\": {}, \"input_from\": [\"e_doc\", \"e_paper\", \"e_news\"], \"produces\": [\"findings\"]},\n    {\"id\": \"s_report\", \"tool\": \"summarize_report\", \"arguments\": {}, \"input_from\": [\"findings\"], \"produces\": [\"report\"]},\n    {\"id\": \"f_report\", \"tool\": \"final_report\", \"arguments\": {}, \"input_from\": [\"findings\", \"s_report\"], \"produces\": [\"final_report\"]},\n    {\"id\": \"a_report\", \"tool\": \"validate_report\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []},\n    {\"id\": \"a_report\", \"tool\": \"audit\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []},\n    {\"id\": \"d_report\", \"tool\": \"deploy\", \"arguments\": {}, \"input_from\": [\"report\"], \"produces\": []},\n    {\"id\": \"p_report\", \"tool\": \"publish\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨\"\n}",
+    "raw_length": 2281,
+    "fillings": {
+      "s_web": " {\"id\": \"s_doc\", \"tool\": \"search_docs\", \"arguments\": {\"query\": \"경쟁 AIM�술\"}, \"input_from\": [], \"produces\": []},",
+      "f_web": " {\"id\": \"f_doc\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_doc\"], \"produces\": []},",
+      "p_web": " {\"id\": \"p_doc\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_doc\"], \"produces\": []},",
+      "e_web": " {\"id\": \"e_doc\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_doc\"], \"produces\": [\"doc_findings\"]},",
+      "dedupe": " {\"id\": \"c_report\", \"tool\": \"compare_report\", \"arguments\": {}, \"input_from\": [\"e_doc\", \"e_paper\", \"e_news\"], \"produces\": [\"findings\"]},",
+      "xcheck": " {\"id\": \"s_report\", \"tool\": \"summarize_report\", \"arguments\": {}, \"input_from\": [\"findings\"], \"produces\": [\"report\"]},",
+      "vsrc": " {\"id\": \"f_report\", \"tool\": \"final_report\", \"arguments\": {}, \"input_from\": [\"findings\", \"s_report\"], \"produces\": [\"final_report\"]},",
+      "rank": " {\"id\": \"a_report\", \"tool\": \"validate_report\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []},",
+      "cite": " {\"id\": \"a_report\", \"tool\": \"audit\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []},",
+      "synth": " {\"id\": \"d_report\", \"tool\": \"deploy\", \"arguments\": {}, \"input_from\": [\"report\"], \"produces\": []},",
+      "fmt": " {\"id\": \"p_report\", \"tool\": \"publish\", \"arguments\": {}, \"input_from\": [\"final_report\"], \"produces\": []}"
+    },
+    "mask_token": "<|mdm_mask|>",
+    "mask_tokens_remaining": 0,
+    "parsed": true,
+    "parse_failure": null
+  },
+  "backend_diagnostics": {
+    "masked_positions": 387,
+    "mask_tokens_left": 0,
+    "steps": 64
+  },
+  "score": {
+    "repairer": "llada",
+    "valid": false,
+    "errors_remaining": 26,
+    "error_types_remaining": [
+      "dangling_step",
+      "duplicate_step",
+      "missing_evidence",
+      "missing_operation",
+      "unknown_dependency",
+      "unknown_tool"
+    ],
+    "runtime_succeeded": false,
+    "collateral_modified": 0,
+    "collateral_renamed": 0,
+    "collateral_removed": 10,
+    "modified_step_ids": [],
+    "renamed_step_ids": [],
+    "removed_step_ids": [
+      "f_web",
+      "p_web",
+      "e_web",
+      "dedupe",
+      "xcheck",
+      "vsrc",
+      "rank",
+      "cite",
+      "synth",
+      "fmt"
+    ],
+    "spurious_added": 10,
+    "added_step_ids": [
+      "a_report",
+      "c_report",
+      "d_report",
+      "e_doc",
+      "f_doc",
+      "f_report",
+      "p_doc",
+      "p_report",
+      "s_doc",
+      "s_report"
+    ],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": false,
+  "collateral_total": 10,
+  "elapsed_seconds": 434.465,
+  "repaired_plan": {
+    "goal": "경쟁 LLM 추론 최적화 기술 동향 비교 리포트",
+    "steps": [
+      {
+        "id": "s_doc",
+        "tool": "search_docs",
+        "arguments": {
+          "query": "경쟁 AIM�술"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_paper",
+        "tool": "search_papers",
+        "arguments": {
+          "query": "LLM inference optimization"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_news",
+        "tool": "search_news",
+        "arguments": {
+          "query": "LLM 추론 최적화 업계 동향"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "f_doc",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_doc"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_paper",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_news",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_doc",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_doc"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_paper",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_news",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "e_doc",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_doc"
+        ],
+        "produces": [
+          "doc_findings"
+        ]
+      },
+      {
+        "id": "e_paper",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_paper"
+        ],
+        "produces": [
+          "paper_findings"
+        ]
+      },
+      {
+        "id": "e_news",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_news"
+        ],
+        "produces": [
+          "news_findings"
+        ]
+      },
+      {
+        "id": "c_report",
+        "tool": "compare_report",
+        "arguments": {},
+        "input_from": [
+          "e_doc",
+          "e_paper",
+          "e_news"
+        ],
+        "produces": [
+          "findings"
+        ]
+      },
+      {
+        "id": "s_report",
+        "tool": "summarize_report",
+        "arguments": {},
+        "input_from": [
+          "findings"
+        ],
+        "produces": [
+          "report"
+        ]
+      },
+      {
+        "id": "f_report",
+        "tool": "final_report",
+        "arguments": {},
+        "input_from": [
+          "findings",
+          "s_report"
+        ],
+        "produces": [
+          "final_report"
+        ]
+      },
+      {
+        "id": "a_report",
+        "tool": "validate_report",
+        "arguments": {},
+        "input_from": [
+          "final_report"
+        ],
+        "produces": []
+      },
+      {
+        "id": "a_report",
+        "tool": "audit",
+        "arguments": {},
+        "input_from": [
+          "final_report"
+        ],
+        "produces": []
+      },
+      {
+        "id": "d_report",
+        "tool": "deploy",
+        "arguments": {},
+        "input_from": [
+          "report"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_report",
+        "tool": "publish",
+        "arguments": {},
+        "input_from": [
+          "final_report"
+        ],
+        "produces": []
+      }
+    ],
+    "stop_condition": "교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨"
+  }
+}

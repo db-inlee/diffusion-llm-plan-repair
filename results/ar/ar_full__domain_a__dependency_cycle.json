@@ -1,0 +1,301 @@
+{
+  "case": {
+    "model": "ar_full",
+    "domain": "domain_a",
+    "corruption": "dependency_cycle"
+  },
+  "backend": {
+    "backend": "ar_full"
+  },
+  "damaged_step_ids": [
+    "s_web"
+  ],
+  "masked_step_ids": [],
+  "masked_token_count": null,
+  "failures": [],
+  "diagnostics": null,
+  "backend_diagnostics": null,
+  "score": {
+    "repairer": "ar_full",
+    "valid": true,
+    "errors_remaining": 0,
+    "error_types_remaining": [],
+    "runtime_succeeded": true,
+    "collateral_modified": 11,
+    "collateral_renamed": 0,
+    "collateral_removed": 4,
+    "modified_step_ids": [
+      "s_paper",
+      "s_news",
+      "f_web",
+      "f_paper",
+      "f_news",
+      "p_web",
+      "p_paper",
+      "p_news",
+      "rank",
+      "synth",
+      "fmt"
+    ],
+    "renamed_step_ids": [],
+    "removed_step_ids": [
+      "dedupe",
+      "xcheck",
+      "vsrc",
+      "cite"
+    ],
+    "spurious_added": 6,
+    "added_step_ids": [
+      "ct",
+      "dd",
+      "s_web_en",
+      "s_web_ko",
+      "vs",
+      "xc"
+    ],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": true,
+  "collateral_total": 15,
+  "elapsed_seconds": 49.013,
+  "repaired_plan": {
+    "goal": "경쟁 LLM 추론 최적화 기술 동향을 웹·논문·뉴스에서 조사해 출처 포함 비교 리포트 작성",
+    "steps": [
+      {
+        "id": "s_web_en",
+        "tool": "search_web",
+        "arguments": {
+          "query": "LLM inference optimization trends 2024 2025 2026 batching KV cache speculative decoding paged attention flash attention continuous batching TensorRT-LLM vLLM llama.cpp"
+        },
+        "input_from": [],
+        "produces": [
+          "web_results_en"
+        ]
+      },
+      {
+        "id": "s_web_ko",
+        "tool": "search_web",
+        "arguments": {
+          "query": "LLM 추론 최적화 동향 2024 2025 2026 배칭 KV 캐시 스펙큘레이티브 디코딩 PagedAttention FlashAttention TensorRT-LLM vLLM"
+        },
+        "input_from": [],
+        "produces": [
+          "web_results_ko"
+        ]
+      },
+      {
+        "id": "s_paper",
+        "tool": "search_papers",
+        "arguments": {
+          "query": "LLM inference optimization survey techniques speculative decoding KV cache attention optimization paged attention flash attention quantization continuous batching 2024..2026"
+        },
+        "input_from": [],
+        "produces": [
+          "paper_results"
+        ]
+      },
+      {
+        "id": "s_news",
+        "tool": "search_news",
+        "arguments": {
+          "query": "LLM inference optimization industry trends 2024 2025 2026 vLLM TensorRT-LLM OpenAI inference acceleration AWS Inferentia AMD ROCm NVIDIA TensorRT news"
+        },
+        "input_from": [],
+        "produces": [
+          "news_results"
+        ]
+      },
+      {
+        "id": "f_web",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_web_en",
+          "s_web_ko"
+        ],
+        "produces": [
+          "web_docs"
+        ]
+      },
+      {
+        "id": "f_paper",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_paper"
+        ],
+        "produces": [
+          "paper_docs"
+        ]
+      },
+      {
+        "id": "f_news",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_news"
+        ],
+        "produces": [
+          "news_docs"
+        ]
+      },
+      {
+        "id": "p_web",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_web"
+        ],
+        "produces": [
+          "web_parsed"
+        ]
+      },
+      {
+        "id": "p_paper",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_paper"
+        ],
+        "produces": [
+          "paper_parsed"
+        ]
+      },
+      {
+        "id": "p_news",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_news"
+        ],
+        "produces": [
+          "news_parsed"
+        ]
+      },
+      {
+        "id": "e_web",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_web"
+        ],
+        "produces": [
+          "web_findings"
+        ]
+      },
+      {
+        "id": "e_paper",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_paper"
+        ],
+        "produces": [
+          "paper_findings"
+        ]
+      },
+      {
+        "id": "e_news",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_news"
+        ],
+        "produces": [
+          "news_findings"
+        ]
+      },
+      {
+        "id": "dd",
+        "tool": "dedupe",
+        "arguments": {},
+        "input_from": [
+          "e_web",
+          "e_paper",
+          "e_news"
+        ],
+        "produces": [
+          "dedup",
+          "deduped_findings"
+        ]
+      },
+      {
+        "id": "xc",
+        "tool": "cross_check",
+        "arguments": {},
+        "input_from": [
+          "dd"
+        ],
+        "produces": [
+          "cross_check",
+          "cross_checked_findings"
+        ]
+      },
+      {
+        "id": "vs",
+        "tool": "validate_sources",
+        "arguments": {},
+        "input_from": [
+          "xc"
+        ],
+        "produces": [
+          "verified_sources",
+          "source_validation"
+        ]
+      },
+      {
+        "id": "rank",
+        "tool": "rank_relevance",
+        "arguments": {},
+        "input_from": [
+          "vs"
+        ],
+        "produces": [
+          "ranked_findings"
+        ]
+      },
+      {
+        "id": "ct",
+        "tool": "cite",
+        "arguments": {},
+        "input_from": [
+          "rank"
+        ],
+        "produces": [
+          "citation",
+          "cited_findings"
+        ]
+      },
+      {
+        "id": "synth",
+        "tool": "synthesize",
+        "arguments": {},
+        "input_from": [
+          "ct"
+        ],
+        "produces": [
+          "comparative_draft"
+        ]
+      },
+      {
+        "id": "fmt",
+        "tool": "format_report",
+        "arguments": {
+          "language": "ko",
+          "report_type": "comparative",
+          "include_citations": true
+        },
+        "input_from": [
+          "synth",
+          "ct",
+          "vs"
+        ],
+        "produces": [
+          "final_report"
+        ]
+      }
+    ],
+    "stop_condition": "교차검증과 출처검증을 완료하고 인용을 포함한 비교 리포트가 완성됨"
+  }
+}

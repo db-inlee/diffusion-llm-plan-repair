@@ -1,0 +1,277 @@
+{
+  "case": {
+    "model": "llada",
+    "domain": "domain_b",
+    "corruption": "step_deletion"
+  },
+  "backend": {
+    "backend": "llada",
+    "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+    "mask_token_id": 126336,
+    "steps": 64,
+    "temperature": 0.0,
+    "quantize_4bit": true,
+    "decoding": "greedy"
+  },
+  "damaged_step_ids": [
+    "enrich"
+  ],
+  "masked_step_ids": [
+    "n_csv",
+    "n_db",
+    "enrich"
+  ],
+  "masked_token_count": 112,
+  "failures": [],
+  "diagnostics": {
+    "raw_text": "{\n  \"goal\": \"3개 소스 분기별 매출 통합 분석 인사이트 리포트\",\n  \"steps\": [\n    {\"id\": \"l_csv\", \"tool\": \"load_csv\", \"arguments\": {\"path\": \"sales_q.csv\"}, \"input_from\": [], \"produces\": [\"csv_dataset\"]},\n    {\"id\": \"l_db\", \"tool\": \"load_db\", \"arguments\": {\"table\": \"customers\"}, \"input_from\": [], \"produces\": [\"db_dataset\"]},\n    {\"id\": \"l_api\", \"tool\": \"load_api\", \"arguments\": {\"endpoint\": \"market_index\"}, \"input_from\": [], \"produces\": [\"market_index\"]},\n    {\"id\": \"pr_csv\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_csv\"], \"produces\": []},\n    {\"id\": \"pr_db\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_db\"], \"produces\": []},\n    {\"id\": \"vs_csv\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_csv\"], \"produces\": []},\n    {\"id\": \"vs_db\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_db\"], \"produces\": []},\n    {\"id\": \"cm\", \"tool\": \"clean_missing\", \"arguments\": {}, \"input_from\": [\"vs_csv\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"co\", \"tool\": \"clean_outlier\", \"arguments\": {}, \"input_from\": [\"cm\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"cm_db\", \"tool\": \"clean_missing\", \"arguments\": {}, \"input_from\": [\"vs_db\", \"co\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"n_api\", \"tool\": \"merge_data\", \"arguments\": {}, \"input_from\": [\"cm_csv\", \"cm_db\"], \"produces\": [\"normalization\"]},\n    {\"id\": \"enrich\", \"tool\": \"enrich\", \"arguments\": {}, \"input_from\": [\"n_api\"], \"produces\": [\"enrichment\"]},\n    {\"id\": \"agg\", \"tool\": \"aggregate\", \"arguments\": {}, \"input_from\": [\"enrich\"], \"produces\": [\"aggregation\"]},\n    {\"id\": \"pivot\", \"tool\": \"pivot\", \"arguments\": {}, \"input_from\": [\"agg\"], \"produces\": []},\n    {\"id\": \"stat\", \"tool\": \"statistical_test\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"corr\", \"tool\": \"correlate\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"viz\", \"tool\": \"visualize\", \"arguments\": {}, \"input_from\": [\"stat\", \"corr\"], \"produces\": []},\n    {\"id\": \"interp\", \"tool\": \"interpret\", \"arguments\": {}, \"input_from\": [\"viz\"], \"produces\": []},\n    {\"id\": \"report\", \"tool\": \"report\", \"arguments\": {}, \"input_from\": [\"interp\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성\"\n}",
+    "raw_length": 2241,
+    "fillings": {
+      "n_csv": " {\"id\": \"cm_db\", \"tool\": \"clean_missing\", \"arguments\": {}, \"input_from\": [\"vs_db\", \"co\"], \"produces\": [\"cleaning\"]},",
+      "n_db": " {\"id\": \"n_api\", \"tool\": \"merge_data\", \"arguments\": {}, \"input_from\": [\"cm_csv\", \"cm_db\"], \"produces\": [\"normalization\"]},",
+      "enrich": " {\"id\": \"enrich\", \"tool\": \"enrich\", \"arguments\": {}, \"input_from\": [\"n_api\"], \"produces\": [\"enrichment\"]},"
+    },
+    "mask_token": "<|mdm_mask|>",
+    "mask_tokens_remaining": 0,
+    "parsed": true,
+    "parse_failure": null
+  },
+  "backend_diagnostics": {
+    "masked_positions": 112,
+    "mask_tokens_left": 0,
+    "steps": 64
+  },
+  "score": {
+    "repairer": "llada",
+    "valid": false,
+    "errors_remaining": 4,
+    "error_types_remaining": [
+      "dangling_step",
+      "missing_operation",
+      "unknown_dependency",
+      "unknown_tool"
+    ],
+    "runtime_succeeded": false,
+    "collateral_modified": 0,
+    "collateral_renamed": 0,
+    "collateral_removed": 2,
+    "modified_step_ids": [],
+    "renamed_step_ids": [],
+    "removed_step_ids": [
+      "n_csv",
+      "n_db"
+    ],
+    "spurious_added": 2,
+    "added_step_ids": [
+      "cm_db",
+      "n_api"
+    ],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": false,
+  "collateral_total": 2,
+  "elapsed_seconds": 423.059,
+  "repaired_plan": {
+    "goal": "3개 소스 분기별 매출 통합 분석 인사이트 리포트",
+    "steps": [
+      {
+        "id": "l_csv",
+        "tool": "load_csv",
+        "arguments": {
+          "path": "sales_q.csv"
+        },
+        "input_from": [],
+        "produces": [
+          "csv_dataset"
+        ]
+      },
+      {
+        "id": "l_db",
+        "tool": "load_db",
+        "arguments": {
+          "table": "customers"
+        },
+        "input_from": [],
+        "produces": [
+          "db_dataset"
+        ]
+      },
+      {
+        "id": "l_api",
+        "tool": "load_api",
+        "arguments": {
+          "endpoint": "market_index"
+        },
+        "input_from": [],
+        "produces": [
+          "market_index"
+        ]
+      },
+      {
+        "id": "pr_csv",
+        "tool": "profile",
+        "arguments": {},
+        "input_from": [
+          "l_csv"
+        ],
+        "produces": []
+      },
+      {
+        "id": "pr_db",
+        "tool": "profile",
+        "arguments": {},
+        "input_from": [
+          "l_db"
+        ],
+        "produces": []
+      },
+      {
+        "id": "vs_csv",
+        "tool": "validate_schema",
+        "arguments": {},
+        "input_from": [
+          "pr_csv"
+        ],
+        "produces": []
+      },
+      {
+        "id": "vs_db",
+        "tool": "validate_schema",
+        "arguments": {},
+        "input_from": [
+          "pr_db"
+        ],
+        "produces": []
+      },
+      {
+        "id": "cm",
+        "tool": "clean_missing",
+        "arguments": {},
+        "input_from": [
+          "vs_csv"
+        ],
+        "produces": [
+          "cleaning"
+        ]
+      },
+      {
+        "id": "co",
+        "tool": "clean_outlier",
+        "arguments": {},
+        "input_from": [
+          "cm"
+        ],
+        "produces": [
+          "cleaning"
+        ]
+      },
+      {
+        "id": "cm_db",
+        "tool": "clean_missing",
+        "arguments": {},
+        "input_from": [
+          "vs_db",
+          "co"
+        ],
+        "produces": [
+          "cleaning"
+        ]
+      },
+      {
+        "id": "n_api",
+        "tool": "merge_data",
+        "arguments": {},
+        "input_from": [
+          "cm_csv",
+          "cm_db"
+        ],
+        "produces": [
+          "normalization"
+        ]
+      },
+      {
+        "id": "enrich",
+        "tool": "enrich",
+        "arguments": {},
+        "input_from": [
+          "n_api"
+        ],
+        "produces": [
+          "enrichment"
+        ]
+      },
+      {
+        "id": "agg",
+        "tool": "aggregate",
+        "arguments": {},
+        "input_from": [
+          "enrich"
+        ],
+        "produces": [
+          "aggregation"
+        ]
+      },
+      {
+        "id": "pivot",
+        "tool": "pivot",
+        "arguments": {},
+        "input_from": [
+          "agg"
+        ],
+        "produces": []
+      },
+      {
+        "id": "stat",
+        "tool": "statistical_test",
+        "arguments": {},
+        "input_from": [
+          "pivot"
+        ],
+        "produces": [
+          "statistical_analysis"
+        ]
+      },
+      {
+        "id": "corr",
+        "tool": "correlate",
+        "arguments": {},
+        "input_from": [
+          "pivot"
+        ],
+        "produces": [
+          "statistical_analysis"
+        ]
+      },
+      {
+        "id": "viz",
+        "tool": "visualize",
+        "arguments": {},
+        "input_from": [
+          "stat",
+          "corr"
+        ],
+        "produces": []
+      },
+      {
+        "id": "interp",
+        "tool": "interpret",
+        "arguments": {},
+        "input_from": [
+          "viz"
+        ],
+        "produces": []
+      },
+      {
+        "id": "report",
+        "tool": "report",
+        "arguments": {},
+        "input_from": [
+          "interp"
+        ],
+        "produces": []
+      }
+    ],
+    "stop_condition": "정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성"
+  }
+}

@@ -1,0 +1,244 @@
+{
+  "case": {
+    "model": "dream",
+    "domain": "domain_a",
+    "corruption": "drop_required_step"
+  },
+  "backend": {
+    "backend": "dream",
+    "model_id": "Dream-org/Dream-v0-Instruct-7B",
+    "mask_token_id": 151666,
+    "steps": 64,
+    "temperature": 0.0,
+    "quantize_4bit": true,
+    "decoding": "greedy"
+  },
+  "damaged_step_ids": [
+    "dedupe"
+  ],
+  "masked_step_ids": [
+    "p_web",
+    "dedupe"
+  ],
+  "masked_token_count": 75,
+  "failures": [
+    {
+      "repairer": "dream",
+      "kind": "backend",
+      "detail": "dream: could not load Dream-org/Dream-v0-Instruct-7B: Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules in 32-bit, you need to set `llm_int8_enable_fp32_cpu_offload=True` and pass a custom `device_map` to `from_pretrained`. Check https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu for more details. "
+    }
+  ],
+  "diagnostics": null,
+  "backend_diagnostics": {
+    "masked_positions": null,
+    "mask_tokens_left": null,
+    "steps": 64
+  },
+  "score": {
+    "repairer": "dream",
+    "valid": false,
+    "errors_remaining": 3,
+    "error_types_remaining": [
+      "dangling_step",
+      "missing_evidence",
+      "unknown_dependency"
+    ],
+    "runtime_succeeded": false,
+    "collateral_modified": 0,
+    "collateral_renamed": 0,
+    "collateral_removed": 0,
+    "modified_step_ids": [],
+    "renamed_step_ids": [],
+    "removed_step_ids": [],
+    "spurious_added": 0,
+    "added_step_ids": [],
+    "damaged_total": 1,
+    "damaged_restored": 1
+  },
+  "solved": false,
+  "collateral_total": 0,
+  "elapsed_seconds": 0.857,
+  "repaired_plan": {
+    "goal": "경쟁 LLM 추론 최적화 기술 동향 비교 리포트",
+    "steps": [
+      {
+        "id": "s_web",
+        "tool": "search_web",
+        "arguments": {
+          "query": "LLM inference optimization 2026"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_paper",
+        "tool": "search_papers",
+        "arguments": {
+          "query": "LLM inference optimization"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "s_news",
+        "tool": "search_news",
+        "arguments": {
+          "query": "LLM 추론 최적화 업계 동향"
+        },
+        "input_from": [],
+        "produces": []
+      },
+      {
+        "id": "f_web",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_web"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_paper",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "f_news",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_web",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_web"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_paper",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_paper"
+        ],
+        "produces": []
+      },
+      {
+        "id": "p_news",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_news"
+        ],
+        "produces": []
+      },
+      {
+        "id": "e_paper",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_paper"
+        ],
+        "produces": [
+          "paper_findings"
+        ]
+      },
+      {
+        "id": "e_news",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_news"
+        ],
+        "produces": [
+          "news_findings"
+        ]
+      },
+      {
+        "id": "dedupe",
+        "tool": "dedupe",
+        "arguments": {},
+        "input_from": [
+          "e_web",
+          "e_paper",
+          "e_news"
+        ],
+        "produces": [
+          "dedup"
+        ]
+      },
+      {
+        "id": "xcheck",
+        "tool": "cross_check",
+        "arguments": {},
+        "input_from": [
+          "dedupe"
+        ],
+        "produces": [
+          "cross_check"
+        ]
+      },
+      {
+        "id": "vsrc",
+        "tool": "validate_sources",
+        "arguments": {},
+        "input_from": [
+          "xcheck"
+        ],
+        "produces": [
+          "verified_sources",
+          "source_validation"
+        ]
+      },
+      {
+        "id": "rank",
+        "tool": "rank_relevance",
+        "arguments": {},
+        "input_from": [
+          "vsrc"
+        ],
+        "produces": []
+      },
+      {
+        "id": "cite",
+        "tool": "cite",
+        "arguments": {},
+        "input_from": [
+          "rank"
+        ],
+        "produces": [
+          "citation"
+        ]
+      },
+      {
+        "id": "synth",
+        "tool": "synthesize",
+        "arguments": {},
+        "input_from": [
+          "cite"
+        ],
+        "produces": []
+      },
+      {
+        "id": "fmt",
+        "tool": "format_report",
+        "arguments": {},
+        "input_from": [
+          "synth"
+        ],
+        "produces": []
+      }
+    ],
+    "stop_condition": "교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨"
+  }
+}

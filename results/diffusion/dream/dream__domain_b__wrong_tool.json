@@ -1,0 +1,273 @@
+{
+  "case": {
+    "model": "dream",
+    "domain": "domain_b",
+    "corruption": "wrong_tool"
+  },
+  "backend": {
+    "backend": "dream",
+    "model_id": "Dream-org/Dream-v0-Instruct-7B",
+    "mask_token_id": 151666,
+    "steps": 64,
+    "temperature": 0.0,
+    "quantize_4bit": true,
+    "decoding": "greedy"
+  },
+  "damaged_step_ids": [
+    "join"
+  ],
+  "masked_step_ids": [
+    "join"
+  ],
+  "masked_token_count": 37,
+  "failures": [
+    {
+      "repairer": "dream",
+      "kind": "backend",
+      "detail": "dream: could not load Dream-org/Dream-v0-Instruct-7B: Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules in 32-bit, you need to set `llm_int8_enable_fp32_cpu_offload=True` and pass a custom `device_map` to `from_pretrained`. Check https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu for more details. "
+    }
+  ],
+  "diagnostics": null,
+  "backend_diagnostics": {
+    "masked_positions": null,
+    "mask_tokens_left": null,
+    "steps": 64
+  },
+  "score": {
+    "repairer": "dream",
+    "valid": false,
+    "errors_remaining": 1,
+    "error_types_remaining": [
+      "unknown_tool"
+    ],
+    "runtime_succeeded": false,
+    "collateral_modified": 0,
+    "collateral_renamed": 0,
+    "collateral_removed": 0,
+    "modified_step_ids": [],
+    "renamed_step_ids": [],
+    "removed_step_ids": [],
+    "spurious_added": 0,
+    "added_step_ids": [],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": false,
+  "collateral_total": 0,
+  "elapsed_seconds": 0.841,
+  "repaired_plan": {
+    "goal": "3개 소스 분기별 매출 통합 분석 인사이트 리포트",
+    "steps": [
+      {
+        "id": "l_csv",
+        "tool": "load_csv",
+        "arguments": {
+          "path": "sales_q.csv"
+        },
+        "input_from": [],
+        "produces": [
+          "csv_dataset"
+        ]
+      },
+      {
+        "id": "l_db",
+        "tool": "load_db",
+        "arguments": {
+          "table": "customers"
+        },
+        "input_from": [],
+        "produces": [
+          "db_dataset"
+        ]
+      },
+      {
+        "id": "l_api",
+        "tool": "load_api",
+        "arguments": {
+          "endpoint": "market_index"
+        },
+        "input_from": [],
+        "produces": [
+          "market_index"
+        ]
+      },
+      {
+        "id": "pr_csv",
+        "tool": "profile",
+        "arguments": {},
+        "input_from": [
+          "l_csv"
+        ],
+        "produces": []
+      },
+      {
+        "id": "pr_db",
+        "tool": "profile",
+        "arguments": {},
+        "input_from": [
+          "l_db"
+        ],
+        "produces": []
+      },
+      {
+        "id": "vs_csv",
+        "tool": "validate_schema",
+        "arguments": {},
+        "input_from": [
+          "pr_csv"
+        ],
+        "produces": []
+      },
+      {
+        "id": "vs_db",
+        "tool": "validate_schema",
+        "arguments": {},
+        "input_from": [
+          "pr_db"
+        ],
+        "produces": []
+      },
+      {
+        "id": "cm",
+        "tool": "clean_missing",
+        "arguments": {},
+        "input_from": [
+          "vs_csv"
+        ],
+        "produces": [
+          "cleaning"
+        ]
+      },
+      {
+        "id": "co",
+        "tool": "clean_outlier",
+        "arguments": {},
+        "input_from": [
+          "cm"
+        ],
+        "produces": [
+          "cleaning"
+        ]
+      },
+      {
+        "id": "n_csv",
+        "tool": "normalize",
+        "arguments": {
+          "operation": "currency"
+        },
+        "input_from": [
+          "co"
+        ],
+        "produces": [
+          "normalization"
+        ]
+      },
+      {
+        "id": "n_db",
+        "tool": "normalize",
+        "arguments": {
+          "operation": "key"
+        },
+        "input_from": [
+          "vs_db"
+        ],
+        "produces": [
+          "normalization"
+        ]
+      },
+      {
+        "id": "join",
+        "tool": "join_x",
+        "arguments": {},
+        "input_from": [
+          "n_csv",
+          "n_db"
+        ],
+        "produces": [
+          "join"
+        ]
+      },
+      {
+        "id": "enrich",
+        "tool": "enrich",
+        "arguments": {},
+        "input_from": [
+          "join",
+          "l_api"
+        ],
+        "produces": []
+      },
+      {
+        "id": "agg",
+        "tool": "aggregate",
+        "arguments": {},
+        "input_from": [
+          "enrich"
+        ],
+        "produces": [
+          "aggregation"
+        ]
+      },
+      {
+        "id": "pivot",
+        "tool": "pivot",
+        "arguments": {},
+        "input_from": [
+          "agg"
+        ],
+        "produces": []
+      },
+      {
+        "id": "stat",
+        "tool": "statistical_test",
+        "arguments": {},
+        "input_from": [
+          "pivot"
+        ],
+        "produces": [
+          "statistical_analysis"
+        ]
+      },
+      {
+        "id": "corr",
+        "tool": "correlate",
+        "arguments": {},
+        "input_from": [
+          "pivot"
+        ],
+        "produces": [
+          "statistical_analysis"
+        ]
+      },
+      {
+        "id": "viz",
+        "tool": "visualize",
+        "arguments": {},
+        "input_from": [
+          "stat",
+          "corr"
+        ],
+        "produces": []
+      },
+      {
+        "id": "interp",
+        "tool": "interpret",
+        "arguments": {},
+        "input_from": [
+          "viz"
+        ],
+        "produces": []
+      },
+      {
+        "id": "report",
+        "tool": "report",
+        "arguments": {},
+        "input_from": [
+          "interp"
+        ],
+        "produces": []
+      }
+    ],
+    "stop_condition": "정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성"
+  }
+}

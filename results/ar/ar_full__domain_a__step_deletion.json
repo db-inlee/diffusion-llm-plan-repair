@@ -1,0 +1,318 @@
+{
+  "case": {
+    "model": "ar_full",
+    "domain": "domain_a",
+    "corruption": "step_deletion"
+  },
+  "backend": {
+    "backend": "ar_full"
+  },
+  "damaged_step_ids": [
+    "xcheck"
+  ],
+  "masked_step_ids": [],
+  "masked_token_count": null,
+  "failures": [],
+  "diagnostics": null,
+  "backend_diagnostics": null,
+  "score": {
+    "repairer": "ar_full",
+    "valid": true,
+    "errors_remaining": 0,
+    "error_types_remaining": [],
+    "runtime_succeeded": true,
+    "collateral_modified": 11,
+    "collateral_renamed": 0,
+    "collateral_removed": 4,
+    "modified_step_ids": [
+      "s_web",
+      "s_news",
+      "f_web",
+      "f_news",
+      "p_web",
+      "p_news",
+      "vsrc",
+      "rank",
+      "cite",
+      "synth",
+      "fmt"
+    ],
+    "renamed_step_ids": [],
+    "removed_step_ids": [
+      "s_paper",
+      "f_paper",
+      "p_paper",
+      "e_paper"
+    ],
+    "spurious_added": 6,
+    "added_step_ids": [
+      "dd",
+      "e_papers",
+      "f_papers",
+      "p_papers",
+      "s_papers",
+      "xchk"
+    ],
+    "damaged_total": 1,
+    "damaged_restored": 0
+  },
+  "solved": true,
+  "collateral_total": 15,
+  "elapsed_seconds": 45.257,
+  "repaired_plan": {
+    "goal": "경쟁 LLM 추론 최적화 기술 동향을 웹·논문·뉴스에서 조사해 교차검증·출처검증·인용을 포함한 비교 리포트 작성",
+    "steps": [
+      {
+        "id": "s_web",
+        "tool": "search_web",
+        "arguments": {
+          "query": "LLM 추론 최적화 동향 OR LLM inference optimization trends 2024..2026"
+        },
+        "input_from": [],
+        "produces": [
+          "web_search_results"
+        ]
+      },
+      {
+        "id": "s_papers",
+        "tool": "search_papers",
+        "arguments": {
+          "query": "LLM inference optimization (quantization, KV cache, FlashAttention, speculative decoding, MoE, batching, vLLM, TensorRT-LLM) 2023..2026"
+        },
+        "input_from": [],
+        "produces": [
+          "paper_search_results"
+        ]
+      },
+      {
+        "id": "s_news",
+        "tool": "search_news",
+        "arguments": {
+          "query": "LLM 추론 최적화 업계 동향 뉴스 2024..2026 OR LLM inference serving optimization industry"
+        },
+        "input_from": [],
+        "produces": [
+          "news_search_results"
+        ]
+      },
+      {
+        "id": "f_web",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_web"
+        ],
+        "produces": [
+          "web_raw"
+        ]
+      },
+      {
+        "id": "f_papers",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_papers"
+        ],
+        "produces": [
+          "papers_raw"
+        ]
+      },
+      {
+        "id": "f_news",
+        "tool": "fetch",
+        "arguments": {},
+        "input_from": [
+          "s_news"
+        ],
+        "produces": [
+          "news_raw"
+        ]
+      },
+      {
+        "id": "p_web",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_web"
+        ],
+        "produces": [
+          "web_parsed"
+        ]
+      },
+      {
+        "id": "p_papers",
+        "tool": "parse_pdf",
+        "arguments": {},
+        "input_from": [
+          "f_papers"
+        ],
+        "produces": [
+          "papers_parsed"
+        ]
+      },
+      {
+        "id": "p_news",
+        "tool": "parse_html",
+        "arguments": {},
+        "input_from": [
+          "f_news"
+        ],
+        "produces": [
+          "news_parsed"
+        ]
+      },
+      {
+        "id": "e_web",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_web"
+        ],
+        "produces": [
+          "web_findings"
+        ]
+      },
+      {
+        "id": "e_papers",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_papers"
+        ],
+        "produces": [
+          "paper_findings"
+        ]
+      },
+      {
+        "id": "e_news",
+        "tool": "extract_claims",
+        "arguments": {},
+        "input_from": [
+          "p_news"
+        ],
+        "produces": [
+          "news_findings"
+        ]
+      },
+      {
+        "id": "dd",
+        "tool": "dedupe",
+        "arguments": {
+          "fields": [
+            "claim",
+            "source",
+            "date"
+          ]
+        },
+        "input_from": [
+          "e_web",
+          "e_papers",
+          "e_news"
+        ],
+        "produces": [
+          "deduped_findings",
+          "dedup"
+        ]
+      },
+      {
+        "id": "xchk",
+        "tool": "cross_check",
+        "arguments": {},
+        "input_from": [
+          "dd"
+        ],
+        "produces": [
+          "cross_checked_findings",
+          "cross_check"
+        ]
+      },
+      {
+        "id": "vsrc",
+        "tool": "validate_sources",
+        "arguments": {},
+        "input_from": [
+          "xchk"
+        ],
+        "produces": [
+          "verified_sources",
+          "source_validation"
+        ]
+      },
+      {
+        "id": "rank",
+        "tool": "rank_relevance",
+        "arguments": {
+          "criteria": [
+            "recency",
+            "authority",
+            "technical_novelty",
+            "practical_adoption"
+          ]
+        },
+        "input_from": [
+          "xchk",
+          "vsrc"
+        ],
+        "produces": [
+          "ranked_findings"
+        ]
+      },
+      {
+        "id": "cite",
+        "tool": "cite",
+        "arguments": {},
+        "input_from": [
+          "rank",
+          "vsrc"
+        ],
+        "produces": [
+          "citations",
+          "citation"
+        ]
+      },
+      {
+        "id": "synth",
+        "tool": "synthesize",
+        "arguments": {
+          "compare_by": [
+            "정량 성능/지연",
+            "기술 범주(양자화, 커널/FlashAttention, KV 캐시/메모리, 배칭/스케줄링, 추측 디코딩, 컴파일/가속, 분산 서빙)",
+            "적용 사례 및 도구(vLLM, TensorRT-LLM 등)",
+            "한계/과제"
+          ],
+          "language": "ko"
+        },
+        "input_from": [
+          "rank",
+          "cite"
+        ],
+        "produces": [
+          "draft_report"
+        ]
+      },
+      {
+        "id": "fmt",
+        "tool": "format_report",
+        "arguments": {
+          "style": "비교 리포트",
+          "include_sections": [
+            "요약",
+            "동향 개요",
+            "기술 비교",
+            "벤더/프로젝트별 전략",
+            "검증 및 한계",
+            "참고문헌"
+          ],
+          "language": "ko"
+        },
+        "input_from": [
+          "synth"
+        ],
+        "produces": [
+          "final_report"
+        ]
+      }
+    ],
+    "stop_condition": "web_findings, paper_findings, news_findings를 교차검증 및 출처검증하고 인용을 포함해 한국어 비교 리포트(final_report)가 완성됨"
+  }
+}

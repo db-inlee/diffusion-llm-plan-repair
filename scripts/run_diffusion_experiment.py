@@ -46,9 +46,13 @@ from plan_repair.corruption import (  # noqa: E402
 )
 from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference  # noqa: E402
 from plan_repair.repair import (  # noqa: E402
+    ARFullRepairer,
+    ARLocalRepairer,
     ByteOffsetTokenizer,
+    DeterministicRepairer,
     EchoBackend,
     HuggingFaceTokenizer,
+    OpenAIClient,
     OracleBackend,
     TorchDLLMBackend,
     repair_and_score,
@@ -68,6 +72,8 @@ MODELS = {
     "llada": (LLaDARepairer, LLADA_MODEL, LLADA_MASK_TOKEN_ID, "fast"),
     "dream": (DreamRepairer, DREAM_MODEL, DREAM_MASK_TOKEN_ID, "byte"),
 }
+# Repairers without a diffusion backend, run through the same matrix for comparability.
+BASELINES = ("deterministic", "ar_full", "ar_local")
 DOMAINS = {"domain_a": DATA_PIPELINE_A, "domain_b": DATA_PIPELINE_B}
 
 # The targets are chosen structurally, so the same matrix applies to both pipelines.
@@ -151,14 +157,31 @@ def build_tokenizer(model: str, backend_kind: str) -> Any:
     )
 
 
+def build_repairer(
+    case: Case, backend_kind: str, plan: AgentPlan, steps: int, temperature: float
+) -> tuple[Any, Any]:
+    """The repairer for this case, and the backend behind it if it has one.
+
+    The rule-based and autoregressive repairers are here so that every repairer in the comparison
+    writes the same result shape from the same corruption matrix — a table assembled from files
+    produced by different scripts would be a table of differences between scripts.
+    """
+    if case.model == "deterministic":
+        return DeterministicRepairer(), None
+    if case.model in ("ar_full", "ar_local"):
+        client = OpenAIClient()
+        builder = ARFullRepairer if case.model == "ar_full" else ARLocalRepairer
+        return builder(client), None
+    backend = build_backend(backend_kind, case.model, plan, steps, temperature)
+    return MODELS[case.model][0](backend, build_tokenizer(case.model, backend_kind)), backend
+
+
 def run_case(case: Case, backend_kind: str, steps: int, temperature: float) -> dict[str, Any]:
     task, plan = load_reference(DOMAINS[case.domain])
     corruption = CORRUPTIONS[case.corruption](task, plan)
     damaged = [step_id for error in corruption.injected for step_id in error.damaged_step_ids]
 
-    repairer_class = MODELS[case.model][0]
-    backend = build_backend(backend_kind, case.model, plan, steps, temperature)
-    repairer = repairer_class(backend, build_tokenizer(case.model, backend_kind))
+    repairer, backend = build_repairer(case, backend_kind, plan, steps, temperature)
 
     started = time.monotonic()
     repaired, score = repair_and_score(
@@ -172,17 +195,25 @@ def run_case(case: Case, backend_kind: str, steps: int, temperature: float) -> d
 
     return {
         "case": {"model": case.model, "domain": case.domain, "corruption": case.corruption},
-        "backend": getattr(backend, "settings", lambda: {"backend": backend_kind})(),
-        "damaged_step_ids": damaged,
-        "masked_step_ids": repairer.last_mask.masked_step_ids if repairer.last_mask else [],
-        "masked_token_count": (
-            repairer.last_alignment.masked_token_count if repairer.last_alignment else None
+        "backend": (
+            getattr(backend, "settings", lambda: {"backend": backend_kind})()
+            if backend is not None
+            else {"backend": case.model}
         ),
-        "failures": [failure.model_dump() for failure in repairer.failures],
+        "damaged_step_ids": damaged,
+        "masked_step_ids": (
+            mask.masked_step_ids if (mask := getattr(repairer, "last_mask", None)) else []
+        ),
+        "masked_token_count": (
+            alignment.masked_token_count
+            if (alignment := getattr(repairer, "last_alignment", None))
+            else None
+        ),
+        "failures": [failure.model_dump() for failure in getattr(repairer, "failures", [])],
         # What the model produced, before anything was parsed. Without this a parse failure has
         # no explanation, only a line number.
         "diagnostics": (
-            repairer.last_diagnostics.model_dump() if repairer.last_diagnostics else None
+            found.model_dump() if (found := getattr(repairer, "last_diagnostics", None)) else None
         ),
         "backend_diagnostics": (backend.diagnostics() if hasattr(backend, "diagnostics") else None),
         "score": score.model_dump(),
@@ -214,7 +245,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--model", choices=[*MODELS, "all"], default="all")
+    parser.add_argument(
+        "--model",
+        choices=[*MODELS, *BASELINES, "all", "all-repairers"],
+        default="all",
+        help="'all' is the diffusion matrix; 'all-repairers' adds the baselines",
+    )
     parser.add_argument("--domain", choices=[*DOMAINS, "all"], default="all")
     parser.add_argument("--corruption", choices=[*CORRUPTIONS, "all"], default="all")
     parser.add_argument(
@@ -230,7 +266,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="redo cases already on disk")
     arguments = parser.parse_args(argv)
 
-    models = list(MODELS) if arguments.model == "all" else [arguments.model]
+    if arguments.model == "all":
+        models = list(MODELS)
+    elif arguments.model == "all-repairers":
+        models = [*MODELS, *BASELINES]
+    else:
+        models = [arguments.model]
     domains = list(DOMAINS) if arguments.domain == "all" else [arguments.domain]
     corruptions = list(CORRUPTIONS) if arguments.corruption == "all" else [arguments.corruption]
     cases = enumerate_cases(models, domains, corruptions)

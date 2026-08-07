@@ -2,7 +2,7 @@
 
 Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진단하고, diffusion LLM으로 오류 구간만 선택적으로 복구하는 연구용 실험 레포. diffusion이 "정상 단계를 덜 망치면서" 복구하는지를 측정하는 것이 목표다.
 
-> **상태:** A단계(평가 하네스) 완료. B단계(복구기 연결)는 예정. 아래 "진행 상황" 참고.
+> A단계(채점 시스템)·B단계(복구기 연결) 구현 완료, 실측 1회차 수집됨. 아래 "진행 상황" 참고.
 
 ---
 
@@ -50,7 +50,7 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 | `plan_repair.corruption` | corruption injector (단일 + 다중 오류 주입) |
 | `plan_repair.runtime` | 결정론 실행 환경 |
 | `plan_repair.data` | reference plan (도메인 A: 리서치 리포트 / 도메인 B: 데이터 분석) |
-| `plan_repair.repair` | [B단계 예비] 복구기 port 자리 — 비어 있음 |
+| `plan_repair.repair` | 복구기 5종 + selective remask + 복구 채점(4갈래 collateral) |
 
 ---
 
@@ -65,11 +65,60 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 - **003** — 여러 오류를 동시에 주입, 탐지 정밀도(precision/recall)를 정량 측정. 겹친 오류를 정확히 분리해 짚는지 엄격 기준으로 검증.
 - **004** — 의미 검사(coverage) + 결정론 실행 환경. 정적 검사와 실행 검사의 상보성 확인. **A단계 완료.**
 
-**B단계 — 복구기 연결 (예정)**
+**B단계 — 복구기 연결 (구현 완료, 실측 1회차)**
 
-- 복구기(결정론 / AR / diffusion)를 동일 인터페이스로 연결.
-- validator가 좁힌 오류 구간을 diffusion에 넘겨 selective remask 복구.
-- A단계의 세 축 채점으로 복구 품질을 측정하고 AR과 비교.
+계획을 실제로 고치고, A단계 저울로 채점한다.
+
+- **B-1** — 복구기 Protocol(모두 같은 시그니처) + 결정론 baseline + mock(하한/상한) + 복구 채점.
+- **B-2** — AR 복구기 2모드(전체 재생성 / 국소 수정). GPT-5 API, 파싱 실패 = 복구 실패.
+- **B-2b** — collateral을 4갈래(modified/renamed/removed/added)로 분리. 저울의 사각지대 제거.
+- **B-3a** — selective remask 로직: validator가 짚은 step만 마스크, 나머지는 구조적으로 보존.
+- **B-3b-1** — 문자 span → 토큰 index 정렬(LLaDA/Dream 실제 tokenizer로 검증).
+- **B-3b-2** — PyTorch 백엔드로 실제 denoising + 재개 가능한 실험 러너.
+
+### 실측 결과 (초안 — `results/`, 셀당 1회)
+
+복구기 5종 × corruption 8유형 × 도메인 2개 = 80 셀.
+
+| 복구기 | 측정된 셀 | solved | collateral 합 |
+| --- | --- | --- | --- |
+| deterministic | 16/16 | 6 | 0 |
+| ar_full (전체 재생성) | 16/16 | 2 | 30 |
+| ar_local (국소 수정) | 16/16 | **9** | 2 |
+| LLaDA (diffusion) | 11/16 | **0** | 18 |
+| Dream (diffusion) | 4/16 | **0** | 0 |
+
+**밝혀진 것:**
+
+- **diffusion은 이 설정에서 하나도 풀지 못했다(0/15).** LLaDA는 유효한 계획을 만들었지만(10/11 파싱 성공)
+  `produces` 태그를 재생성하면서 원본과 다른 이름을 지어내 의미 검사에 걸렸다(`missing_operation` 8셀).
+  step **전체**를 마스크한 결과이지 모델의 무능이 아니다 — 필드 단위 마스킹이 다음 과제다.
+- **가장 잘 푼 것은 ar_local이다(9/16), collateral 2로.** 계획 문서가 "diffusion의 진짜 경쟁자"로 지목한 방식이다.
+- **전체 재생성의 대가가 수치로 나왔다** — ar_full 30 vs ar_local 2. 다만 이 비교는 AR 두 모드 사이의 것이고,
+  diffusion은 아직 여기에 참여할 수준이 아니다.
+- **결정론 baseline이 6/16을 푼다.** 정보가 사라지지 않은 오류(순서·중복·종료조건)는 전부, 사라진 오류는 하나도.
+- **15셀 중 11셀이 OOM으로 측정조차 되지 않았다**(Dream 9셀). Dream은 현재 데이터로 평가할 수 없다.
+
+정직하게: 셀당 1회 실행이고, GPT-5는 temperature를 못 낮춰 비결정적이다. 자세한 것은
+[docs/design-decisions-phase-b.md](docs/design-decisions-phase-b.md).
+
+**다음: 필드 단위 마스킹.** B단계 실측이 규명한 실패 원인(step 전체를 마스크한 탓에 멀쩡한
+`produces` 태그까지 재생성됨)을 제거해, 깨진 필드만 마스크하고 복구 성공을 다시 잰다. 현재의
+0/15가 모델의 한계인지 마스킹 단위 설계의 한계인지를 가르는 실험이다.
+
+---
+
+## 실측 재현
+
+```
+uv run python scripts/run_diffusion_experiment.py --model deterministic --out results/deterministic
+uv run python scripts/run_diffusion_experiment.py --model ar_local --out results/ar   # OPENAI_API_KEY 필요
+uv run python scripts/aggregate_results.py --results results                          # 표 전부 출력
+```
+
+`results/`의 각 JSON은 한 셀이다 — 채점 결과, 복구된 계획, 그리고 diffusion의 경우 모델 raw 출력과
+파싱 실패 진단(마스크 토큰 잔존 수, 깨진 지점 문맥)까지 담는다. 집계 표의 모든 숫자는
+`scripts/aggregate_results.py`가 이 파일들에서 계산하므로, 다시 돌려 확인할 수 있다.
 
 ---
 
