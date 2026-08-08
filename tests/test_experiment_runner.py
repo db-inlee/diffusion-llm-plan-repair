@@ -160,6 +160,41 @@ def test_every_corruption_is_reachable_in_both_domains(runner):
             assert corruption.broken_plan != plan, f"{domain}/{name} changed nothing"
 
 
+def test_the_length_matched_corruption_is_opt_in(runner):
+    """It needs a vocabulary to build, and the default matrix is what every earlier run used.
+
+    Putting it in ``all`` would both change what an unqualified run means and make the whole
+    matrix depend on a tokenizer being loadable.
+    """
+    assert "wrong_tool_length_matched" not in runner.CORRUPTIONS
+    assert "wrong_tool_length_matched" in runner.MATCHED_CORRUPTIONS
+    assert len(runner.CORRUPTIONS) == 8
+    assert "wrong_tool" in runner.CORRUPTIONS
+
+
+def test_a_length_matched_run_records_the_corruption_it_used(tmp_path):
+    """A result file that does not say which corruption produced it cannot be compared."""
+    run(
+        "--model",
+        "llada",
+        "--domain",
+        "domain_b",
+        "--corruption",
+        "wrong_tool_length_matched",
+        out=tmp_path,
+    )
+
+    result = json.loads((tmp_path / "llada__domain_b__wrong_tool_length_matched.json").read_text())
+    detail = result["injected"][0]["detail"]
+
+    assert result["case"]["corruption"] == "wrong_tool_length_matched"
+    assert detail["mode"] == "length_matched"
+    assert detail["matched_with"] == "llada"
+    assert detail["original_tool"] == "join"
+    assert detail["new_tool"] != "join"
+    assert result["damaged_step_ids"] == ["join"]
+
+
 def test_the_case_list_is_the_product_of_the_choices(runner):
     cases = runner.enumerate_cases(["llada"], ["domain_a", "domain_b"], ["wrong_tool"])
 

@@ -10,7 +10,9 @@ Contracts held by both operations:
   validator can possibly report. A deleted step is recorded in ``detail`` instead.
 """
 
-from typing import Any
+import json
+from collections.abc import Iterable
+from typing import Any, Protocol, runtime_checkable
 
 from plan_repair.schema.corruption import (
     BROKEN_DEPENDENCY,
@@ -36,6 +38,48 @@ from plan_repair.validation.paths import (
 
 UNKNOWN_MODE = "unknown"
 CYCLE_MODE = "cycle"
+
+SUFFIX_MODE = "suffix"
+LENGTH_MATCHED_MODE = "length_matched"
+
+
+class CorruptionNotApplicableError(RuntimeError):
+    """No corruption of this shape exists for this step.
+
+    Raised rather than approximated. A length-matched corruption that settles for a different
+    length is not a weaker version of the experiment — it is the experiment's premise removed,
+    and the result would read as a measurement of something it did not test.
+    """
+
+
+@runtime_checkable
+class TokenLength(Protocol):
+    """How many tokens a string costs, and whose vocabulary says so.
+
+    A count is only meaningful next to the name of the vocabulary that produced it: LLaDA and
+    Dream do not always agree, so a corruption matched on one and measured on the other would be
+    matched to nothing in particular.
+    """
+
+    name: str
+
+    def token_length(self, text: str) -> int: ...
+
+
+class VocabularyLength:
+    """Token counts from a real tokenizer, without importing one.
+
+    Anything that answers ``tokenizer(text, add_special_tokens=False)["input_ids"]`` will do,
+    which keeps this package free of a transformers dependency and lets a test supply a
+    vocabulary small enough to reason about.
+    """
+
+    def __init__(self, tokenizer: Any, name: str) -> None:
+        self.name = name
+        self._tokenizer = tokenizer
+
+    def token_length(self, text: str) -> int:
+        return len(self._tokenizer(text, add_special_tokens=False)["input_ids"])
 
 
 def inject_broken_dependency(
@@ -163,6 +207,87 @@ def inject_wrong_tool(
         broken_plan=broken,
         injected=[injected],
         preserved_step_ids=_preserved(broken, damaged={step_id}),
+    )
+
+
+def length_matched_tools(
+    tool: str, *, task: AgentTask, pool: Iterable[str], token_length: TokenLength
+) -> list[str]:
+    """Names from ``pool`` that this task does not allow and that cost what ``tool`` costs.
+
+    Two conditions have to hold at once, and dropping either one voids the experiment:
+
+    * **outside the task's tools**, or the validator reports nothing. A same-length name taken
+      from ``available_tools`` leaves the plan valid — no error, no path, no mask, no repair —
+      and a repairer that does nothing at all then scores as having solved it.
+    * **the same token length**, or the mask is not the length the answer needs, which is the
+      one thing this corruption exists to control.
+
+    The length is measured on the value as it is written into the plan (``json.dumps``), because
+    that string is what the mask covers, quotes included.
+
+    Sorted, so a run repeats.
+    """
+    wanted = token_length.token_length(json.dumps(tool))
+    allowed = task.tool_names()
+    return sorted(
+        name
+        for name in set(pool)
+        if name != tool
+        and name not in allowed
+        and token_length.token_length(json.dumps(name)) == wanted
+    )
+
+
+def inject_wrong_tool_length_matched(
+    plan: AgentPlan,
+    task: AgentTask,
+    *,
+    step_id: str,
+    pool: Iterable[str],
+    token_length: TokenLength,
+) -> CorruptionResult:
+    """Replace the tool of ``step_id`` with an unavailable name of exactly the same token length.
+
+    The control for a measurement about mask length. The default corruption appends ``_x``,
+    which costs exactly one token, so the region handed to the model is always one token longer
+    than the answer needs — 39 of 39 steps across both domains. A model that knows the answer
+    still has a cell left over and fills it (``join`` came back as ``join_db``). This variant
+    removes that surplus and nothing else, so a repair that succeeds here and fails there says
+    the surplus was the cause.
+
+    It is an addition, not a replacement: the ``_x`` corruption stays exactly as it was, because
+    every measurement before this one was taken against it.
+
+    Raises :class:`CorruptionNotApplicableError` when no name of the right length exists.
+    """
+    original = _find_step(plan, step_id).tool
+    candidates = length_matched_tools(original, task=task, pool=pool, token_length=token_length)
+    wanted = token_length.token_length(json.dumps(original))
+    if not candidates:
+        raise CorruptionNotApplicableError(
+            f"no name outside {task.task_id!r}'s tools costs the {wanted} "
+            f"{token_length.name} tokens that {original!r} does"
+        )
+
+    result = inject_wrong_tool(plan, step_id=step_id, new_tool=candidates[0])
+    injected = result.injected[0]
+    return result.model_copy(
+        update={
+            "injected": [
+                injected.model_copy(
+                    update={
+                        "detail": {
+                            **injected.detail,
+                            "mode": LENGTH_MATCHED_MODE,
+                            "matched_with": token_length.name,
+                            "token_length": wanted,
+                            "candidates": candidates,
+                        }
+                    }
+                )
+            ]
+        }
     )
 
 

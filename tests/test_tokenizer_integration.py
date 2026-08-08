@@ -9,11 +9,24 @@ Only tokenizers are loaded here. No weights, no model, no GPU.
 """
 
 import itertools
+import json
 
 import pytest
 
-from plan_repair.corruption import UNKNOWN_MODE, inject_broken_dependency, inject_wrong_tool
-from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference
+from plan_repair.corruption import (
+    UNKNOWN_MODE,
+    CorruptionNotApplicableError,
+    VocabularyLength,
+    inject_broken_dependency,
+    inject_wrong_tool,
+    inject_wrong_tool_length_matched,
+)
+from plan_repair.data import (
+    DATA_PIPELINE_A,
+    DATA_PIPELINE_B,
+    all_tool_names,
+    load_reference,
+)
 from plan_repair.repair import (
     ByteOffsetTokenizer,
     FillRequest,
@@ -470,6 +483,96 @@ class _Replay(TorchDLLMBackend):
         if not self.seen_prompt:
             self.seen_prompt = list(sequence)
         return list(self._answer), [0.9] * len(sequence)
+
+
+# --- the length-matched corruption, measured on the vocabularies it is matched against ----------
+
+
+def _mask_and_surplus(task, plan, step_id, new_tool, tokenizer, raw):
+    """How many tokens the mask holds, and how many more that is than the answer needs.
+
+    The answer's cost is measured in the same place, by writing it into the masked region and
+    counting again — a token count taken out of context would not be the count the model faces.
+    """
+    broken = inject_wrong_tool(plan, step_id=step_id, new_tool=new_tool).broken_plan
+    sequence = plan_to_sequence(broken)
+    spec = mask_spec_from_paths(sequence, broken, validate_plan(broken, task).detected_paths())
+    assert spec.spans, f"{new_tool!r} produced no mask — the validator saw nothing wrong"
+
+    alignment = align_mask(sequence, spec, tokenizer)
+    indices = alignment.masked_token_indices
+    low = alignment.offsets[indices[0]][0]
+    high = alignment.offsets[indices[-1]][1]
+    answer = next(step.tool for step in plan.steps if step.id == step_id)
+    region = sequence.text[low:high].replace(json.dumps(new_tool), json.dumps(answer))
+    needed = len(raw(region, add_special_tokens=False)["input_ids"])
+    return len(indices), len(indices) - needed
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_the_length_matched_corruption_makes_the_mask_as_long_as_the_answer(domain):
+    """The whole ticket, as a number.
+
+    ``_x`` costs one token, so the default corruption always hands the model one cell more than
+    the answer needs, and both models were seen writing the answer and then filling that cell.
+    The matched corruption leaves none over. Measured against each vocabulary in turn, because a
+    match made on one is not a match on the other.
+    """
+    task, plan = load_reference(domain)
+    target = next(step.id for step in plan.steps if len(step.input_from) > 1)
+    answer = next(step.tool for step in plan.steps if step.id == target)
+
+    for tokenizer, raw in (
+        (llada(), load_tokenizer(LLADA_MODEL)),
+        (dream(), load_tokenizer(DREAM_MODEL)),
+    ):
+        length = VocabularyLength(raw, tokenizer.name)
+        corruption = inject_wrong_tool_length_matched(
+            plan, task, step_id=target, pool=all_tool_names(), token_length=length
+        )
+        replacement = corruption.injected[0].detail["new_tool"]
+
+        matched_mask, matched_surplus = _mask_and_surplus(
+            task, plan, target, replacement, tokenizer, raw
+        )
+        suffix_mask, suffix_surplus = _mask_and_surplus(
+            task, plan, target, f"{answer}_x", tokenizer, raw
+        )
+
+        assert matched_surplus == 0, (
+            f"{tokenizer.name}/{domain}: {answer!r} -> {replacement!r} left "
+            f"{matched_surplus} cell(s) over"
+        )
+        assert suffix_surplus == 1, f"{tokenizer.name}/{domain}: _x no longer costs one token"
+        assert matched_mask == suffix_mask - 1
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_every_step_can_be_corrupted_without_a_surplus(domain):
+    """Not only the step the experiment targets — the property is of the corruption, not the case.
+
+    Steps with no name of the right length are reported rather than quietly matched to something
+    longer, which is what the skip is for.
+    """
+    task, plan = load_reference(domain)
+    raw = load_tokenizer(LLADA_MODEL)
+    length = VocabularyLength(raw, "llada")
+    skipped, surpluses = [], set()
+
+    for step in plan.steps:
+        try:
+            corruption = inject_wrong_tool_length_matched(
+                plan, task, step_id=step.id, pool=all_tool_names(), token_length=length
+            )
+        except CorruptionNotApplicableError:
+            skipped.append(step.tool)
+            continue
+        _, surplus = _mask_and_surplus(
+            task, plan, step.id, corruption.injected[0].detail["new_tool"], llada(), raw
+        )
+        surpluses.add(surplus)
+
+    assert surpluses == {0}, f"{domain}: surpluses seen {sorted(surpluses)}, skipped {skipped}"
 
 
 def test_narrowing_the_mask_shrinks_it_in_token_terms_too():

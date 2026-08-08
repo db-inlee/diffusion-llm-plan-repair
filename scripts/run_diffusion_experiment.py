@@ -36,6 +36,7 @@ if str(REPOSITORY_ROOT / "src") not in sys.path:  # so a clone runs without inst
 from plan_repair.corruption import (  # noqa: E402
     CYCLE_MODE,
     UNKNOWN_MODE,
+    VocabularyLength,
     inject_broken_dependency,
     inject_drop_required_step,
     inject_duplicate_step,
@@ -43,8 +44,14 @@ from plan_repair.corruption import (  # noqa: E402
     inject_step_deletion,
     inject_wrong_ordering,
     inject_wrong_tool,
+    inject_wrong_tool_length_matched,
 )
-from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference  # noqa: E402
+from plan_repair.data import (  # noqa: E402
+    DATA_PIPELINE_A,
+    DATA_PIPELINE_B,
+    all_tool_names,
+    load_reference,
+)
 from plan_repair.repair import (  # noqa: E402
     ARFullRepairer,
     ARLocalRepairer,
@@ -91,6 +98,17 @@ CORRUPTIONS: dict[str, Callable[[AgentTask, AgentPlan], CorruptionResult]] = {
     "missing_stop_condition": lambda task, plan: inject_missing_stop_condition(plan),
     "drop_required_step": lambda task, plan: inject_drop_required_step(
         plan, task, requirement=task.required_evidence[0]
+    ),
+}
+
+# Corruptions that need a vocabulary to build, so they cannot sit in the table above. Kept out of
+# ``--corruption all`` on purpose: the default matrix is what every earlier measurement was taken
+# against, and it must keep running without loading a tokenizer.
+MATCHED_CORRUPTIONS: dict[
+    str, Callable[[AgentTask, AgentPlan, VocabularyLength], CorruptionResult]
+] = {
+    "wrong_tool_length_matched": lambda task, plan, length: inject_wrong_tool_length_matched(
+        plan, task, step_id=_fan_in(plan), pool=all_tool_names(), token_length=length
     ),
 }
 
@@ -176,9 +194,32 @@ def build_repairer(
     return MODELS[case.model][0](backend, build_tokenizer(case.model, backend_kind)), backend
 
 
-def run_case(case: Case, backend_kind: str, steps: int, temperature: float) -> dict[str, Any]:
+def build_length(model: str) -> VocabularyLength:
+    """A token counter from one model's vocabulary. Tokenizer only — no weights, no GPU."""
+    from transformers import AutoTokenizer
+
+    load: Any = AutoTokenizer.from_pretrained
+    return VocabularyLength(load(MODELS[model][1], trust_remote_code=True), model)
+
+
+def build_corruption(name: str, task: AgentTask, plan: AgentPlan, match: str) -> CorruptionResult:
+    """The corruption for this case, loading a vocabulary only when one is needed.
+
+    ``match`` names the vocabulary a length-matched corruption is matched against, and it is the
+    same for every repairer in a run by design: matched per model, LLaDA and Dream would disagree
+    on three of the thirty-one tool names, and the two would then be repairing different broken
+    plans. A comparison needs one corruption.
+    """
+    if name in CORRUPTIONS:
+        return CORRUPTIONS[name](task, plan)
+    return MATCHED_CORRUPTIONS[name](task, plan, build_length(match))
+
+
+def run_case(
+    case: Case, backend_kind: str, steps: int, temperature: float, match: str = "llada"
+) -> dict[str, Any]:
     task, plan = load_reference(DOMAINS[case.domain])
-    corruption = CORRUPTIONS[case.corruption](task, plan)
+    corruption = build_corruption(case.corruption, task, plan, match)
     damaged = [step_id for error in corruption.injected for step_id in error.damaged_step_ids]
 
     repairer, backend = build_repairer(case, backend_kind, plan, steps, temperature)
@@ -200,6 +241,10 @@ def run_case(case: Case, backend_kind: str, steps: int, temperature: float) -> d
             if backend is not None
             else {"backend": case.model}
         ),
+        # The ground truth as the injector recorded it — for a length-matched corruption this is
+        # where the mode and the vocabulary it was matched against live, and a result file that
+        # does not say which corruption produced it cannot be compared with one that does.
+        "injected": [error.model_dump() for error in corruption.injected],
         "damaged_step_ids": damaged,
         "masked_step_ids": (
             mask.masked_step_ids if (mask := getattr(repairer, "last_mask", None)) else []
@@ -252,7 +297,15 @@ def main(argv: list[str] | None = None) -> int:
         help="'all' is the diffusion matrix; 'all-repairers' adds the baselines",
     )
     parser.add_argument("--domain", choices=[*DOMAINS, "all"], default="all")
-    parser.add_argument("--corruption", choices=[*CORRUPTIONS, "all"], default="all")
+    parser.add_argument(
+        "--corruption", choices=[*CORRUPTIONS, *MATCHED_CORRUPTIONS, "all"], default="all"
+    )
+    parser.add_argument(
+        "--match-tokenizer",
+        choices=list(MODELS),
+        default="llada",
+        help="whose vocabulary a length-matched corruption is matched against",
+    )
     parser.add_argument(
         "--backend",
         choices=["torch", "oracle", "echo"],
@@ -294,7 +347,13 @@ def main(argv: list[str] | None = None) -> int:
     ):
         destination = arguments.out / f"{case.key}.json"
         try:
-            result = run_case(case, arguments.backend, arguments.steps, arguments.temperature)
+            result = run_case(
+                case,
+                arguments.backend,
+                arguments.steps,
+                arguments.temperature,
+                arguments.match_tokenizer,
+            )
         except Exception as exc:  # a case that blows up must not take the batch with it
             failed += 1
             print(f"\n  {case}: {type(exc).__name__}: {exc}", file=sys.stderr)
