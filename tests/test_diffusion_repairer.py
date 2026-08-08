@@ -116,7 +116,10 @@ def test_the_alignment_is_recorded_for_inspection(model):
     assert repairer.last_mask is not None
     assert repairer.last_alignment is not None
     assert repairer.last_alignment.masked_token_count > 0
-    assert set(repairer.last_alignment.token_ranges) == set(repairer.last_mask.masked_step_ids)
+    # Keyed by span: a field mask narrows 'join' to 'join.input_from'.
+    assert set(repairer.last_alignment.token_ranges) == {
+        span.key for span in repairer.last_mask.spans
+    }
 
 
 @pytest.mark.parametrize("width", [1, 4, 16])
@@ -213,7 +216,7 @@ def test_a_filling_that_is_not_a_step_is_a_failed_repair():
         name = "nonsense"
 
         def fill(self, request):
-            return dict.fromkeys(request.mask.masked_step_ids, "not a step")
+            return dict.fromkeys((span.key for span in request.mask.spans), "not a step")
 
     task, plan, corruption = corrupted()
     repairer = LLaDARepairer(NonsenseBackend(), CharTokenizer())
@@ -232,7 +235,7 @@ def test_a_backend_reaching_outside_the_mask_is_refused():
         name = "greedy"
 
         def fill(self, request):
-            filling = dict.fromkeys(request.mask.masked_step_ids, "{}")
+            filling = dict.fromkeys((span.key for span in request.mask.spans), "{}")
             filling[request.mask.preserved_step_ids[0]] = "{}"  # a healthy step
             return filling
 

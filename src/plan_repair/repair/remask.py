@@ -33,20 +33,32 @@ from collections.abc import Iterable, Mapping
 from pydantic import BaseModel, ConfigDict
 
 from plan_repair.repair.plan_io import parse_plan
-from plan_repair.schema.plan import AgentPlan
+from plan_repair.schema.plan import AgentPlan, Step
+from plan_repair.validation.paths import parse_path
 
 STEP_INDENT = "    "
 DEFAULT_PLACEHOLDER = "[MASK]"
 
 
 class StepSpan(BaseModel):
-    """Where one step lives in the sequence: ``text[start:end]`` is exactly that step."""
+    """A region of the sequence that belongs to one step.
+
+    With ``field`` unset the span is the whole step; with it set the span is just that field's
+    value, which is what lets a repair rewrite a broken ``tool`` without the rest of the step —
+    its ``produces`` above all — passing through the model at all.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     step_id: str
     start: int
     end: int
+    field: str | None = None
+
+    @property
+    def key(self) -> str:
+        """What a filling for this span is keyed by. Equal to the step id for a whole step."""
+        return self.step_id if self.field is None else f"{self.step_id}.{self.field}"
 
 
 class PlanSequence(BaseModel):
@@ -102,6 +114,78 @@ def sequence_to_plan(text: str) -> AgentPlan:
     return parse_plan(text)
 
 
+def field_spans(step: Step, span_start: int) -> dict[str, tuple[int, int]]:
+    """Where each field's *value* sits inside the step's span.
+
+    A step is one line of JSON written by ``json.dumps`` in the model's field order, so rendering
+    the fields again one at a time and accumulating their lengths reproduces the same offsets —
+    the separator between fields is always ``", "`` and the line always opens with ``{``. That is
+    checked against the real text rather than assumed.
+    """
+    payload = step.model_dump()
+    spans: dict[str, tuple[int, int]] = {}
+    cursor = span_start + 1  # past the opening brace
+    for index, (name, value) in enumerate(payload.items()):
+        rendered_key = json.dumps(name, ensure_ascii=False) + ": "
+        rendered_value = json.dumps(value, ensure_ascii=False)
+        start = cursor + len(rendered_key)
+        spans[name] = (start, start + len(rendered_value))
+        cursor = start + len(rendered_value) + (2 if index < len(payload) - 1 else 0)
+    return spans
+
+
+def mask_spec_from_paths(sequence: PlanSequence, plan: AgentPlan, paths: Iterable[str]) -> MaskSpec:
+    """Build a mask from validator paths, narrowing to a field wherever a path names one.
+
+    A path like ``$.steps[?join].tool`` masks that field alone; ``$.steps[?join]`` masks the whole
+    step, which is what the errors that have no field — ordering, duplicates, dangling steps —
+    still produce. Paths pointing outside the plan (the stop condition, a task requirement) name
+    nothing a mask can cover and are ignored here.
+
+    Two paths for one step can disagree about how much to take: if anything asks for the whole
+    step, the whole step is masked, because a narrower mask alongside it would be meaningless.
+    """
+    by_id = {step.id: step for step in plan.steps}
+    spans_by_id = {span.step_id: span for span in sequence.spans}
+
+    whole: set[str] = set()
+    fields: dict[str, set[str]] = {}
+    unmaskable: set[str] = set()
+    for path in paths:
+        parsed = parse_path(path)
+        if parsed.step_id is None:
+            continue
+        if parsed.step_id not in spans_by_id:
+            unmaskable.add(parsed.step_id)
+            continue
+        if parsed.field is None:
+            whole.add(parsed.step_id)
+        else:
+            fields.setdefault(parsed.step_id, set()).add(parsed.field)
+
+    spans: list[StepSpan] = []
+    for span in sequence.spans:  # plan order, so the mask reads in the order of the sequence
+        step_id = span.step_id
+        if step_id in whole:
+            spans.append(span)
+            continue
+        for field in sorted(fields.get(step_id, ())):
+            boundaries = field_spans(by_id[step_id], span.start).get(field)
+            if boundaries is None:
+                continue
+            spans.append(
+                StepSpan(step_id=step_id, start=boundaries[0], end=boundaries[1], field=field)
+            )
+
+    touched = whole | set(fields)
+    return MaskSpec(
+        masked_step_ids=[span.step_id for span in sequence.spans if span.step_id in touched],
+        preserved_step_ids=[span.step_id for span in sequence.spans if span.step_id not in touched],
+        spans=spans,
+        unmaskable_step_ids=sorted(unmaskable),
+    )
+
+
 def mask_spec(sequence: PlanSequence, step_ids: Iterable[str]) -> MaskSpec:
     """Mark ``step_ids`` for regeneration; everything else is preserved by construction."""
     wanted = set(step_ids)
@@ -116,17 +200,23 @@ def mask_spec(sequence: PlanSequence, step_ids: Iterable[str]) -> MaskSpec:
 
 
 def render_masked(
-    sequence: PlanSequence, spec: MaskSpec, placeholder: str = DEFAULT_PLACEHOLDER
+    sequence: PlanSequence,
+    spec: MaskSpec,
+    placeholder: str = DEFAULT_PLACEHOLDER,
+    plan: AgentPlan | None = None,
 ) -> str:
     """The sequence with every masked step replaced by ``placeholder``.
 
     ``placeholder`` is a parameter because the mask token belongs to whichever model fills it in.
     """
-    return _rebuild(sequence, {step_id: placeholder for step_id in spec.masked_step_ids})
+    return _rebuild(sequence, {span.key: placeholder for span in spec.spans}, spec, plan)
 
 
 def fill_masked(
-    sequence: PlanSequence, spec: MaskSpec, replacements: Mapping[str, str | None]
+    sequence: PlanSequence,
+    spec: MaskSpec,
+    replacements: Mapping[str, str | None],
+    plan: AgentPlan | None = None,
 ) -> str:
     """Put ``replacements`` into the masked spans and return the resulting sequence.
 
@@ -134,14 +224,14 @@ def fill_masked(
     should not exist". Steps outside the mask are copied over verbatim — that is the guarantee
     the whole approach rests on, so it is enforced here rather than asked for.
     """
-    unknown = set(replacements) - set(spec.masked_step_ids)
+    allowed = {span.key for span in spec.spans}
+    unknown = set(replacements) - allowed
     if unknown:
         raise ValueError(f"cannot fill steps that are not masked: {sorted(unknown)}")
     normalised = {
-        step_id: None if text is None else normalise_filling(text)
-        for step_id, text in replacements.items()
+        key: None if text is None else normalise_filling(text) for key, text in replacements.items()
     }
-    return _rebuild(sequence, normalised)
+    return _rebuild(sequence, normalised, spec, plan)
 
 
 def normalise_filling(text: str) -> str:
@@ -163,18 +253,71 @@ def normalise_filling(text: str) -> str:
     return text.strip(" \t\r\n,")
 
 
-def _rebuild(sequence: PlanSequence, replacements: Mapping[str, str | None]) -> str:
+def _rebuild(
+    sequence: PlanSequence,
+    replacements: Mapping[str, str | None],
+    spec: MaskSpec | None = None,
+    plan: AgentPlan | None = None,
+) -> str:
+    """Put the replacements back and return the sequence.
+
+    A whole-step replacement swaps the line. A field replacement rewrites one value inside the
+    line and copies every other field across character for character — which is the point of the
+    whole exercise: ``produces`` is not in the mask, so it cannot come back different.
+    """
+    field_spans_by_step = _field_replacements(replacements, spec)
+    by_id = {step.id: step for step in (plan.steps if plan else [])}
+
     kept: list[str] = []
     for span, original in zip(sequence.spans, sequence.step_texts, strict=True):
-        if span.step_id in replacements:
+        if span.step_id in replacements:  # the whole step was masked
             replacement = replacements[span.step_id]
             if replacement is None:
                 continue
             kept.append(replacement)
+        elif span.step_id in field_spans_by_step:
+            step = by_id.get(span.step_id)
+            if step is None:
+                kept.append(original)
+                continue
+            kept.append(_rewrite_fields(step, field_spans_by_step[span.step_id]))
         else:
             kept.append(original)
     text, _ = _assemble(sequence.header, kept, sequence.footer, [])
     return text
+
+
+def _field_replacements(
+    replacements: Mapping[str, str | None], spec: MaskSpec | None
+) -> dict[str, dict[str, str]]:
+    """Group field-keyed replacements by step, dropping the ones with nothing to put."""
+    grouped: dict[str, dict[str, str]] = {}
+    for span in spec.spans if spec else []:
+        if span.field is None or span.key not in replacements:
+            continue
+        value = replacements[span.key]
+        if value is None:
+            continue
+        grouped.setdefault(span.step_id, {})[span.field] = value
+    return grouped
+
+
+def _rewrite_fields(step: Step, values: Mapping[str, str]) -> str:
+    """Render the step again with the named fields replaced by the given text.
+
+    The separators are the template's, not the filling's — the same division of labour that
+    settled the doubled comma between steps, applied one level down. A filling that arrives with
+    the surrounding ``,`` or spaces attached contributes only its value.
+    """
+    parts = []
+    for name, value in step.model_dump().items():
+        rendered = (
+            normalise_filling(values[name])
+            if name in values
+            else json.dumps(value, ensure_ascii=False)
+        )
+        parts.append(f"{json.dumps(name, ensure_ascii=False)}: {rendered}")
+    return "{" + ", ".join(parts) + "}"
 
 
 def _assemble(
@@ -204,8 +347,10 @@ __all__ = [
     "MaskSpec",
     "PlanSequence",
     "StepSpan",
+    "field_spans",
     "fill_masked",
     "mask_spec",
+    "mask_spec_from_paths",
     "normalise_filling",
     "plan_to_sequence",
     "render_masked",

@@ -75,10 +75,16 @@ class OracleBackend:
         import json
 
         filling: dict[str, str | None] = {}
-        for step_id in request.mask.masked_step_ids:
-            original = self._reference.get(step_id)
-            filling[step_id] = (
-                None if original is None else json.dumps(original.model_dump(), ensure_ascii=False)
+        for span in request.mask.spans:
+            original = self._reference.get(span.step_id)
+            if original is None:
+                # No such step before the corruption, so the answer is that it should not exist.
+                if span.field is None:
+                    filling[span.key] = None
+                continue
+            payload = original.model_dump()
+            filling[span.key] = json.dumps(
+                payload if span.field is None else payload[span.field], ensure_ascii=False
             )
         return filling
 
@@ -93,8 +99,8 @@ class EchoBackend:
     name = "echo"
 
     def fill(self, request: FillRequest) -> dict[str, str | None]:
-        by_id = dict(zip(request.sequence.step_ids(), request.sequence.step_texts, strict=True))
-        return {step_id: by_id[step_id] for step_id in request.mask.masked_step_ids}
+        text = request.sequence.text
+        return {span.key: text[span.start : span.end] for span in request.mask.spans}
 
 
 class FailingBackend:

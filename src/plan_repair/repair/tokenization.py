@@ -59,6 +59,7 @@ class TokenAlignment(BaseModel):
     # Not a violation of the contract (no healthy step is involved) but worth seeing, because the
     # model rewrites those characters too.
     spilling_token_indices: list[int]
+    # Keyed by span key: a step id for a whole-step mask, ``step.field`` for a field mask.
     token_ranges: dict[str, tuple[int, int]]
 
     @property
@@ -104,7 +105,7 @@ def align_mask(
             if _overlaps(offsets[index][0], offsets[index][1], span.start, span.end)
         ]
         if covered:
-            ranges[span.step_id] = (covered[0], covered[-1] + 1)
+            ranges[span.key] = (covered[0], covered[-1] + 1)
 
     return TokenAlignment(
         tokenizer=tokenizer.name,

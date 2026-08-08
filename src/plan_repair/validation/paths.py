@@ -6,7 +6,7 @@ produced; the id-based form stays valid on the broken plan and is what downstrea
 mapping needs.
 """
 
-from typing import Any
+from typing import Any, NamedTuple
 
 PLAN_PATH = "$"
 STEPS_PATH = "$.steps"
@@ -45,6 +45,42 @@ def required_evidence_path(name: str) -> str:
 def required_operation_path(name: str) -> str:
     """Path of a required operation entry — a location in the task (see above)."""
     return f"$.required_operations[?{name}]"
+
+
+class ParsedPath(NamedTuple):
+    """A path read back: which step it names, and which field of it, if any.
+
+    ``field`` is ``None`` when the path points at a whole step (``$.steps[?join]``) and
+    ``step_id`` is ``None`` when it points somewhere else entirely — the plan's stop condition,
+    or a requirement of the task. Both are locations no field mask can narrow.
+    """
+
+    step_id: str | None
+    field: str | None
+
+
+# The fields a path can name. Kept explicit rather than "whatever follows the dot" so that an
+# unexpected suffix is reported as unparsed instead of silently masking something unintended.
+MASKABLE_FIELDS = ("tool", "input_from")
+
+
+def parse_path(path: str) -> ParsedPath:
+    """Read a step path back into the step and field it names.
+
+    The inverse of :func:`step_path` and friends. Paths are generated in one place and, until
+    now, only ever generated — field-level masking is what makes reading them back necessary.
+    """
+    if not path.startswith("$.steps[?"):
+        return ParsedPath(None, None)
+    closing = path.find("]", len("$.steps[?"))
+    if closing < 0:
+        return ParsedPath(None, None)
+    step_id = path[len("$.steps[?") : closing]
+    remainder = path[closing + 1 :]
+    if not remainder:
+        return ParsedPath(step_id, None)
+    field = remainder.removeprefix(".")
+    return ParsedPath(step_id, field if field in MASKABLE_FIELDS else None)
 
 
 def path_from_loc(loc: tuple[Any, ...], raw_plan: Any) -> tuple[str, list[str]]:

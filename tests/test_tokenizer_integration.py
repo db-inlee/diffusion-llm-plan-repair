@@ -12,7 +12,7 @@ import itertools
 
 import pytest
 
-from plan_repair.corruption import UNKNOWN_MODE, inject_broken_dependency
+from plan_repair.corruption import UNKNOWN_MODE, inject_broken_dependency, inject_wrong_tool
 from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference
 from plan_repair.repair import (
     ByteOffsetTokenizer,
@@ -20,10 +20,14 @@ from plan_repair.repair import (
     OracleBackend,
     align_mask,
     decode_spans,
+    field_spans,
+    fill_masked,
     mask_spec,
+    mask_spec_from_paths,
     masked_token_ids,
     plan_to_sequence,
     repair_and_score,
+    sequence_to_plan,
 )
 from plan_repair.repair.diffusion import (
     DREAM_MASK_TOKEN,
@@ -73,6 +77,25 @@ def masked_case(domain=DATA_PIPELINE_B):
     sequence = plan_to_sequence(broken)
     spec = mask_spec(sequence, validate_plan(broken, task).detected_step_ids())
     return task, plan, corruption, sequence, spec
+
+
+def field_case(domain, corrupt):
+    """The same, with the mask narrowed to the fields the validator named."""
+    task, plan = load_reference(domain)
+    fan_in = next(step for step in plan.steps if len(step.input_from) > 1)
+    corruption = corrupt(plan, fan_in.id)
+    broken = corruption.broken_plan
+    sequence = plan_to_sequence(broken)
+    spec = mask_spec_from_paths(sequence, broken, validate_plan(broken, task).detected_paths())
+    return task, plan, corruption, sequence, spec
+
+
+WRONG_TOOL = (lambda plan, step_id: inject_wrong_tool(plan, step_id=step_id), "wrong_tool")
+BROKEN_DEP = (
+    lambda plan, step_id: inject_broken_dependency(plan, step_id=step_id, mode=UNKNOWN_MODE),
+    "broken_dependency",
+)
+FIELD_CASES = [WRONG_TOOL, BROKEN_DEP]
 
 
 # --- the reconstruction, checked against a tokenizer that knows the answer ---------------
@@ -264,6 +287,165 @@ def test_a_masked_step_can_be_read_back_out_of_its_token_range():
         assert set(recovered) == set(spec.masked_step_ids)
         for step_id, text in recovered.items():
             assert f'"id": "{step_id}"' in text, tokenizer.name
+
+
+# --- field masks, whose spans are short enough for tokenization to matter -------------------------
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+@pytest.mark.parametrize(("corrupt", "label"), FIELD_CASES)
+def test_a_field_span_is_short_but_never_too_short_to_mask(corrupt, label, domain):
+    """The risk field masking introduces: a span of eight characters may fall inside one token.
+
+    A whole step is a hundred characters and always gets tokens of its own. ``"join_x"`` is eight,
+    and if the tokenizer merged it into a token shared with a preserved step the mask would come
+    back empty — nothing to regenerate, so no repair. It does not happen on either vocabulary, and
+    that is a measurement rather than a guarantee: the assertion is here so the day it changes is
+    the day a test fails rather than the day a result silently drops to zero.
+    """
+    _, _, _, sequence, spec = field_case(domain, corrupt)
+    field_spans_masked = [span for span in spec.spans if span.field is not None]
+    assert field_spans_masked, label
+
+    for tokenizer in (llada(), dream()):
+        alignment = align_mask(sequence, spec, tokenizer)
+
+        for span in field_spans_masked:
+            assert span.key in alignment.token_ranges, (
+                f"{tokenizer.name}/{domain}/{label}: {span.key} covers "
+                f"{span.end - span.start} characters and got no token of its own"
+            )
+            start, end = alignment.token_ranges[span.key]
+            assert end > start
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+@pytest.mark.parametrize(("corrupt", "label"), FIELD_CASES)
+def test_a_field_mask_reaches_no_further_than_the_separators_beside_it(corrupt, label, domain):
+    """Where the token boundaries fall relative to a field, measured rather than assumed.
+
+    A field value does not start on a token boundary — the token holding its opening quote also
+    holds the space before it, and the one holding its last character also holds the comma after.
+    So the mask covers one character more on each side than the span asks for. Those characters
+    are the separator, which reassembly writes itself (``_rewrite_fields``), so what the model
+    does with them is discarded. The next field's *value* is what must stay out of reach.
+    """
+    _, _, _, sequence, spec = field_case(domain, corrupt)
+
+    for tokenizer in (llada(), dream()):
+        alignment = align_mask(sequence, spec, tokenizer)
+
+        for span in (span for span in spec.spans if span.field is not None):
+            first, last = alignment.token_ranges[span.key]
+            low = alignment.offsets[first][0]
+            high = alignment.offsets[last - 1][1]
+
+            assert span.start - low <= 1, f"{tokenizer.name}/{domain}/{label}/{span.key}"
+            assert high - span.end <= 1, f"{tokenizer.name}/{domain}/{label}/{span.key}"
+            assert sequence.text[low : span.start].strip(" ,") == ""
+            assert sequence.text[span.end : high].strip(" ,") == ""
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+@pytest.mark.parametrize(("corrupt", "label"), FIELD_CASES)
+def test_no_token_of_a_narrowed_steps_produces_tag_is_masked(corrupt, label, domain):
+    """The reason for the ticket, at the level the model actually sees.
+
+    ``align_mask`` protects healthy *steps*; within a step that is being repaired it protects
+    nothing, so this is not implied by the earlier tests and has to be checked against real token
+    boundaries. Steps masked whole — the dangling step a broken edge leaves behind, which names no
+    field to narrow to — are excluded, because for those the tag is inside the mask by design.
+    """
+    _, _, _, sequence, spec = field_case(domain, corrupt)
+    narrowed = {span.step_id for span in spec.spans if span.field is not None}
+    whole = {span.step_id for span in spec.spans if span.field is None}
+    plan_steps = {span.step_id: span for span in sequence.spans}
+    assert narrowed - whole, label
+
+    _, _, corruption, _, _ = field_case(domain, corrupt)
+    broken = {step.id: step for step in corruption.broken_plan.steps}
+    tags = {
+        step_id: field_spans(broken[step_id], plan_steps[step_id].start)["produces"]
+        for step_id in narrowed - whole
+    }
+
+    for tokenizer in (llada(), dream()):
+        alignment = align_mask(sequence, spec, tokenizer)
+
+        for index in alignment.masked_token_indices:
+            start, end = alignment.offsets[index]
+            for step_id, (low, high) in tags.items():
+                assert not (start < high and low < end), (
+                    f"{tokenizer.name}/{domain}/{label}: token {index} at {start}:{end} "
+                    f"reaches {step_id}.produces at {low}:{high} — the tag would be regenerated"
+                )
+
+
+@pytest.mark.parametrize(("corrupt", "label"), FIELD_CASES)
+def test_what_the_gpu_backend_reads_back_is_what_reassembly_accepts(corrupt, label):
+    """The seam a real run goes through, with the denoising replaced by the identity.
+
+    ``TorchDLLMBackend.fill`` ends in ``decode_spans``, so its keys are whatever the alignment
+    recorded — span keys now, step ids before. Nothing in that backend changed, which is only
+    safe if the two ends still agree; ``fill_masked`` rejects a key it does not know, so a
+    disagreement would surface on the GPU as a failed repair rather than here.
+
+    Decoding a field's token range hands back the separators either side of it (``' "join_x",'``)
+    because the boundary tokens straddle them. Reassembly owns those characters, so the round
+    trip has to come back clean anyway.
+    """
+    _, _, corruption, sequence, spec = field_case(DATA_PIPELINE_B, corrupt)
+
+    for tokenizer, raw in (
+        (llada(), load_tokenizer(LLADA_MODEL)),
+        (dream(), load_tokenizer(DREAM_MODEL)),
+    ):
+        alignment = align_mask(sequence, spec, tokenizer)
+
+        recovered = decode_spans(alignment, alignment.token_ids, raw)
+
+        assert set(recovered) == {span.key for span in spec.spans}, f"{tokenizer.name}/{label}"
+        assert sequence_to_plan(fill_masked(sequence, spec, recovered, corruption.broken_plan)) == (
+            corruption.broken_plan
+        ), f"{tokenizer.name}/{label}"
+
+
+def test_narrowing_the_mask_shrinks_it_in_token_terms_too():
+    """87-92% fewer characters was the point; this is the same reduction counted in tokens."""
+    _, plan = load_reference()
+    fan_in = next(step for step in plan.steps if len(step.input_from) > 1)
+    _, _, _, sequence, narrow = field_case(DATA_PIPELINE_B, WRONG_TOOL[0])
+    wide = mask_spec(sequence, [fan_in.id])
+
+    for tokenizer in (llada(), dream()):
+        narrowed = align_mask(sequence, narrow, tokenizer).masked_token_count
+        whole = align_mask(sequence, wide, tokenizer).masked_token_count
+
+        assert 0 < narrowed < whole / 4, f"{tokenizer.name}: {narrowed} of {whole} tokens"
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+@pytest.mark.parametrize(("corrupt", "label"), FIELD_CASES)
+def test_a_field_mask_repairs_end_to_end_on_real_tokenizers(corrupt, label, domain):
+    task, plan, corruption, _, _ = field_case(domain, corrupt)
+
+    for repairer_class, tokenizer in ((LLaDARepairer, llada()), (DreamRepairer, dream())):
+        repairer = repairer_class(OracleBackend(plan), tokenizer)
+        repaired, score = repair_and_score(
+            repairer,
+            reference_plan=plan,
+            broken_plan=corruption.broken_plan,
+            task=task,
+            damaged_step_ids=corruption.injected[0].damaged_step_ids,
+        )
+
+        assert score.solved, f"{repairer.name}/{domain}/{label}"
+        assert (
+            score.collateral_modified,
+            score.collateral_renamed,
+            score.collateral_removed,
+        ) == (0, 0, 0), f"{repairer.name}/{domain}/{label}"
+        assert repaired == plan
 
 
 # --- the whole pipeline, on real tokenizers -------------------------------------------------------

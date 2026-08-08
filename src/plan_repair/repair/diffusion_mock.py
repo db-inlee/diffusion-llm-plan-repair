@@ -27,7 +27,7 @@ from plan_repair.repair.remask import (
     MaskSpec,
     PlanSequence,
     fill_masked,
-    mask_spec,
+    mask_spec_from_paths,
     plan_to_sequence,
     sequence_to_plan,
 )
@@ -52,9 +52,9 @@ class _MaskingRepairer:
         task: AgentTask,
     ) -> AgentPlan:
         sequence = plan_to_sequence(broken_plan)
-        spec = mask_spec(sequence, validation.detected_step_ids())
+        spec = mask_spec_from_paths(sequence, broken_plan, validation.detected_paths())
         self.last_mask = spec
-        filled = fill_masked(sequence, spec, self._fill(sequence, spec))
+        filled = fill_masked(sequence, spec, self._fill(sequence, spec), broken_plan)
         try:
             return sequence_to_plan(filled)
         except PlanParseError as exc:
@@ -84,25 +84,35 @@ class OracleDiffusion(_MaskingRepairer):
 
     def _fill(self, sequence: PlanSequence, spec: MaskSpec) -> dict[str, str | None]:
         filling: dict[str, str | None] = {}
-        for step_id in spec.masked_step_ids:
-            original = self._reference.get(step_id)
-            filling[step_id] = (
-                None if original is None else json.dumps(original.model_dump(), ensure_ascii=False)
+        for span in spec.spans:
+            original = self._reference.get(span.step_id)
+            if original is None:
+                if span.field is None:
+                    filling[span.key] = None
+                continue
+            payload = original.model_dump()
+            filling[span.key] = json.dumps(
+                payload if span.field is None else payload[span.field], ensure_ascii=False
             )
         return filling
 
 
 class NoisyDiffusion(_MaskingRepairer):
-    """Fills the mask with text that is not a step, to exercise the failure path."""
+    """Fills the mask with text that is not valid JSON, to exercise the failure path.
+
+    The default has to be unusable in *both* positions a mask can take: a quoted string would be
+    a broken step but a perfectly good field value, and the failure path would go unexercised
+    wherever the mask narrowed to a field.
+    """
 
     name = "diffusion_noisy"
 
-    def __init__(self, noise: str = '"a plausible looking step"') -> None:
+    def __init__(self, noise: str = "<not a step>") -> None:
         super().__init__()
         self._noise = noise
 
     def _fill(self, sequence: PlanSequence, spec: MaskSpec) -> dict[str, str | None]:
-        return dict.fromkeys(spec.masked_step_ids, self._noise)
+        return dict.fromkeys((span.key for span in spec.spans), self._noise)
 
 
 __all__ = ["NoisyDiffusion", "OracleDiffusion"]

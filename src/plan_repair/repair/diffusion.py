@@ -29,7 +29,7 @@ from plan_repair.repair.plan_io import PlanParseError
 from plan_repair.repair.remask import (
     MaskSpec,
     fill_masked,
-    mask_spec,
+    mask_spec_from_paths,
     plan_to_sequence,
     sequence_to_plan,
 )
@@ -76,7 +76,7 @@ class DiffusionRepairer:
         task: AgentTask,
     ) -> AgentPlan:
         sequence = plan_to_sequence(broken_plan)
-        spec = mask_spec(sequence, validation.detected_step_ids())
+        spec = mask_spec_from_paths(sequence, broken_plan, validation.detected_paths())
         self.last_mask = spec
 
         alignment: TokenAlignment | None = None
@@ -96,7 +96,7 @@ class DiffusionRepairer:
         # fill_masked refuses anything outside the mask, so a backend cannot reach a healthy step
         # even by mistake.
         try:
-            filled = fill_masked(sequence, spec, filling)
+            filled = fill_masked(sequence, spec, filling, broken_plan)
         except ValueError as exc:
             return self._give_up(broken_plan, BACKEND_FAILURE, str(exc))
 

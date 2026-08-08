@@ -39,7 +39,7 @@ class ScriptedFillBackend:
         self._filling = filling
 
     def fill(self, request):
-        return dict.fromkeys(request.mask.masked_step_ids, self._filling)
+        return dict.fromkeys((span.key for span in request.mask.spans), self._filling)
 
 
 def corrupted(domain=DATA_PIPELINE_B):
@@ -90,7 +90,7 @@ def test_a_failed_repair_records_the_text_that_failed():
     assert diagnostics is not None
     assert diagnostics.parsed is False
     assert broken_json in diagnostics.raw_text
-    assert set(diagnostics.fillings) == set(repairer.last_mask.masked_step_ids)
+    assert set(diagnostics.fillings) == {span.key for span in repairer.last_mask.spans}
     assert all(value == broken_json for value in diagnostics.fillings.values())
 
 
@@ -116,7 +116,7 @@ def test_mask_tokens_surviving_into_the_output_are_counted():
     repairer, _ = repair_with(ScriptedFillBackend(half_filled), task, plan, corruption)
 
     diagnostics = repairer.last_diagnostics
-    assert diagnostics.mask_tokens_remaining == 2 * len(repairer.last_mask.masked_step_ids)
+    assert diagnostics.mask_tokens_remaining == 2 * len(repairer.last_mask.spans)
     assert diagnostics.unfinished_denoising is True
     assert diagnostics.mask_token == LLADA_MASK_TOKEN
 

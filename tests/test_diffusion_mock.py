@@ -229,7 +229,7 @@ class WideningDiffusion:
         sequence = plan_to_sequence(broken_plan)
         spec = mask_spec(sequence, set(validation.detected_step_ids()) | set(self._extra))
         filling = {}
-        for step_id in spec.masked_step_ids:
+        for step_id in (span.key for span in spec.spans):
             original = next(s for s in broken_plan.steps if s.id == step_id)
             payload = original.model_dump()
             payload["arguments"] = {**payload["arguments"], "regenerated": True}
