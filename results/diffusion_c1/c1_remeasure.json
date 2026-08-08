@@ -1,0 +1,1076 @@
+[
+  {
+    "case": {
+      "model": "llada",
+      "domain": "domain_a",
+      "corruption": "broken_dependency"
+    },
+    "backend": {
+      "backend": "llada",
+      "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+      "mask_token_id": 126336,
+      "steps": 64,
+      "temperature": 0.0,
+      "quantize_4bit": true,
+      "decoding": "greedy"
+    },
+    "damaged_step_ids": [
+      "dedupe"
+    ],
+    "masked_step_ids": [
+      "e_news",
+      "dedupe"
+    ],
+    "masked_token_count": 54,
+    "failures": [],
+    "diagnostics": {
+      "raw_text": "{\n  \"goal\": \"경쟁 LLM 추론 최적화 기술 동향 비교 리포트\",\n  \"steps\": [\n    {\"id\": \"s_web\", \"tool\": \"search_web\", \"arguments\": {\"query\": \"LLM inference optimization 2026\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_paper\", \"tool\": \"search_papers\", \"arguments\": {\"query\": \"LLM inference optimization\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_news\", \"tool\": \"search_news\", \"arguments\": {\"query\": \"LLM 추론 최적화 업계 동향\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"f_web\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_web\"], \"produces\": []},\n    {\"id\": \"f_paper\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_paper\"], \"produces\": []},\n    {\"id\": \"f_news\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_news\"], \"produces\": []},\n    {\"id\": \"p_web\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_web\"], \"produces\": []},\n    {\"id\": \"p_paper\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_paper\"], \"produces\": []},\n    {\"id\": \"p_news\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_news\"], \"produces\": []},\n    {\"id\": \"e_web\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_web\"], \"produces\": [\"web_findings\"]},\n    {\"id\": \"e_paper\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_paper\"], \"produces\": [\"paper_findings\"]},\n    {\"id\": \"e_news\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_news\"], \"produces\": [\"news_findings\"]},\n    {\"id\": \"dedupe\", \"tool\": \"dedupe\", \"arguments\": {}, \"input_from\": [\"web_findings\", \"paper_findings\", \"news_findings\"], \"produces\": [\"dedup\"]},\n    {\"id\": \"xcheck\", \"tool\": \"cross_check\", \"arguments\": {}, \"input_from\": [\"dedupe\"], \"produces\": [\"cross_check\"]},\n    {\"id\": \"vsrc\", \"tool\": \"validate_sources\", \"arguments\": {}, \"input_from\": [\"xcheck\"], \"produces\": [\"verified_sources\", \"source_validation\"]},\n    {\"id\": \"rank\", \"tool\": \"rank_relevance\", \"arguments\": {}, \"input_from\": [\"vsrc\"], \"produces\": []},\n    {\"id\": \"cite\", \"tool\": \"cite\", \"arguments\": {}, \"input_from\": [\"rank\"], \"produces\": [\"citation\"]},\n    {\"id\": \"synth\", \"tool\": \"synthesize\", \"arguments\": {}, \"input_from\": [\"cite\"], \"produces\": []},\n    {\"id\": \"fmt\", \"tool\": \"format_report\", \"arguments\": {}, \"input_from\": [\"synth\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨\"\n}",
+      "raw_length": 2296,
+      "fillings": {
+        "e_news": " {\"id\": \"e_news\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_news\"], \"produces\": [\"news_findings\"]},",
+        "dedupe.input_from": " [\"web_findings\", \"paper_findings\", \"news_findings\"],"
+      },
+      "mask_token": "<|mdm_mask|>",
+      "mask_tokens_remaining": 0,
+      "parsed": true,
+      "parse_failure": null
+    },
+    "backend_diagnostics": {
+      "masked_positions": 54,
+      "mask_tokens_left": 0,
+      "steps": 64
+    },
+    "score": {
+      "repairer": "llada",
+      "valid": false,
+      "errors_remaining": 4,
+      "error_types_remaining": [
+        "dangling_step",
+        "unknown_dependency"
+      ],
+      "runtime_succeeded": false,
+      "collateral_modified": 0,
+      "collateral_renamed": 0,
+      "collateral_removed": 0,
+      "modified_step_ids": [],
+      "renamed_step_ids": [],
+      "removed_step_ids": [],
+      "spurious_added": 0,
+      "added_step_ids": [],
+      "damaged_total": 1,
+      "damaged_restored": 0
+    },
+    "solved": false,
+    "collateral_total": 0,
+    "elapsed_seconds": 394.089,
+    "repaired_plan": {
+      "goal": "경쟁 LLM 추론 최적화 기술 동향 비교 리포트",
+      "steps": [
+        {
+          "id": "s_web",
+          "tool": "search_web",
+          "arguments": {
+            "query": "LLM inference optimization 2026"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "s_paper",
+          "tool": "search_papers",
+          "arguments": {
+            "query": "LLM inference optimization"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "s_news",
+          "tool": "search_news",
+          "arguments": {
+            "query": "LLM 추론 최적화 업계 동향"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "f_web",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_web"
+          ],
+          "produces": []
+        },
+        {
+          "id": "f_paper",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_paper"
+          ],
+          "produces": []
+        },
+        {
+          "id": "f_news",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_news"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_web",
+          "tool": "parse_html",
+          "arguments": {},
+          "input_from": [
+            "f_web"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_paper",
+          "tool": "parse_pdf",
+          "arguments": {},
+          "input_from": [
+            "f_paper"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_news",
+          "tool": "parse_html",
+          "arguments": {},
+          "input_from": [
+            "f_news"
+          ],
+          "produces": []
+        },
+        {
+          "id": "e_web",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_web"
+          ],
+          "produces": [
+            "web_findings"
+          ]
+        },
+        {
+          "id": "e_paper",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_paper"
+          ],
+          "produces": [
+            "paper_findings"
+          ]
+        },
+        {
+          "id": "e_news",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_news"
+          ],
+          "produces": [
+            "news_findings"
+          ]
+        },
+        {
+          "id": "dedupe",
+          "tool": "dedupe",
+          "arguments": {},
+          "input_from": [
+            "web_findings",
+            "paper_findings",
+            "news_findings"
+          ],
+          "produces": [
+            "dedup"
+          ]
+        },
+        {
+          "id": "xcheck",
+          "tool": "cross_check",
+          "arguments": {},
+          "input_from": [
+            "dedupe"
+          ],
+          "produces": [
+            "cross_check"
+          ]
+        },
+        {
+          "id": "vsrc",
+          "tool": "validate_sources",
+          "arguments": {},
+          "input_from": [
+            "xcheck"
+          ],
+          "produces": [
+            "verified_sources",
+            "source_validation"
+          ]
+        },
+        {
+          "id": "rank",
+          "tool": "rank_relevance",
+          "arguments": {},
+          "input_from": [
+            "vsrc"
+          ],
+          "produces": []
+        },
+        {
+          "id": "cite",
+          "tool": "cite",
+          "arguments": {},
+          "input_from": [
+            "rank"
+          ],
+          "produces": [
+            "citation"
+          ]
+        },
+        {
+          "id": "synth",
+          "tool": "synthesize",
+          "arguments": {},
+          "input_from": [
+            "cite"
+          ],
+          "produces": []
+        },
+        {
+          "id": "fmt",
+          "tool": "format_report",
+          "arguments": {},
+          "input_from": [
+            "synth"
+          ],
+          "produces": []
+        }
+      ],
+      "stop_condition": "교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨"
+    }
+  },
+  {
+    "case": {
+      "model": "llada",
+      "domain": "domain_a",
+      "corruption": "wrong_tool"
+    },
+    "backend": {
+      "backend": "llada",
+      "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+      "mask_token_id": 126336,
+      "steps": 64,
+      "temperature": 0.0,
+      "quantize_4bit": true,
+      "decoding": "greedy"
+    },
+    "damaged_step_ids": [
+      "dedupe"
+    ],
+    "masked_step_ids": [
+      "dedupe"
+    ],
+    "masked_token_count": 5,
+    "failures": [],
+    "diagnostics": {
+      "raw_text": "{\n  \"goal\": \"경쟁 LLM 추론 최적화 기술 동향 비교 리포트\",\n  \"steps\": [\n    {\"id\": \"s_web\", \"tool\": \"search_web\", \"arguments\": {\"query\": \"LLM inference optimization 2026\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_paper\", \"tool\": \"search_papers\", \"arguments\": {\"query\": \"LLM inference optimization\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"s_news\", \"tool\": \"search_news\", \"arguments\": {\"query\": \"LLM 추론 최적화 업계 동향\"}, \"input_from\": [], \"produces\": []},\n    {\"id\": \"f_web\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_web\"], \"produces\": []},\n    {\"id\": \"f_paper\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_paper\"], \"produces\": []},\n    {\"id\": \"f_news\", \"tool\": \"fetch\", \"arguments\": {}, \"input_from\": [\"s_news\"], \"produces\": []},\n    {\"id\": \"p_web\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_web\"], \"produces\": []},\n    {\"id\": \"p_paper\", \"tool\": \"parse_pdf\", \"arguments\": {}, \"input_from\": [\"f_paper\"], \"produces\": []},\n    {\"id\": \"p_news\", \"tool\": \"parse_html\", \"arguments\": {}, \"input_from\": [\"f_news\"], \"produces\": []},\n    {\"id\": \"e_web\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_web\"], \"produces\": [\"web_findings\"]},\n    {\"id\": \"e_paper\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_paper\"], \"produces\": [\"paper_findings\"]},\n    {\"id\": \"e_news\", \"tool\": \"extract_claims\", \"arguments\": {}, \"input_from\": [\"p_news\"], \"produces\": [\"news_findings\"]},\n    {\"id\": \"dedupe\", \"tool\": \"deduplicate\", \"arguments\": {}, \"input_from\": [\"e_web\", \"e_paper\", \"e_news\"], \"produces\": [\"dedup\"]},\n    {\"id\": \"xcheck\", \"tool\": \"cross_check\", \"arguments\": {}, \"input_from\": [\"dedupe\"], \"produces\": [\"cross_check\"]},\n    {\"id\": \"vsrc\", \"tool\": \"validate_sources\", \"arguments\": {}, \"input_from\": [\"xcheck\"], \"produces\": [\"verified_sources\", \"source_validation\"]},\n    {\"id\": \"rank\", \"tool\": \"rank_relevance\", \"arguments\": {}, \"input_from\": [\"vsrc\"], \"produces\": []},\n    {\"id\": \"cite\", \"tool\": \"cite\", \"arguments\": {}, \"input_from\": [\"rank\"], \"produces\": [\"citation\"]},\n    {\"id\": \"synth\", \"tool\": \"synthesize\", \"arguments\": {}, \"input_from\": [\"cite\"], \"produces\": []},\n    {\"id\": \"fmt\", \"tool\": \"format_report\", \"arguments\": {}, \"input_from\": [\"synth\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨\"\n}",
+      "raw_length": 2280,
+      "fillings": {
+        "dedupe.tool": " \"deduplicate\","
+      },
+      "mask_token": "<|mdm_mask|>",
+      "mask_tokens_remaining": 0,
+      "parsed": true,
+      "parse_failure": null
+    },
+    "backend_diagnostics": {
+      "masked_positions": 5,
+      "mask_tokens_left": 0,
+      "steps": 64
+    },
+    "score": {
+      "repairer": "llada",
+      "valid": false,
+      "errors_remaining": 1,
+      "error_types_remaining": [
+        "unknown_tool"
+      ],
+      "runtime_succeeded": false,
+      "collateral_modified": 0,
+      "collateral_renamed": 0,
+      "collateral_removed": 0,
+      "modified_step_ids": [],
+      "renamed_step_ids": [],
+      "removed_step_ids": [],
+      "spurious_added": 0,
+      "added_step_ids": [],
+      "damaged_total": 1,
+      "damaged_restored": 0
+    },
+    "solved": false,
+    "collateral_total": 0,
+    "elapsed_seconds": 137.668,
+    "repaired_plan": {
+      "goal": "경쟁 LLM 추론 최적화 기술 동향 비교 리포트",
+      "steps": [
+        {
+          "id": "s_web",
+          "tool": "search_web",
+          "arguments": {
+            "query": "LLM inference optimization 2026"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "s_paper",
+          "tool": "search_papers",
+          "arguments": {
+            "query": "LLM inference optimization"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "s_news",
+          "tool": "search_news",
+          "arguments": {
+            "query": "LLM 추론 최적화 업계 동향"
+          },
+          "input_from": [],
+          "produces": []
+        },
+        {
+          "id": "f_web",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_web"
+          ],
+          "produces": []
+        },
+        {
+          "id": "f_paper",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_paper"
+          ],
+          "produces": []
+        },
+        {
+          "id": "f_news",
+          "tool": "fetch",
+          "arguments": {},
+          "input_from": [
+            "s_news"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_web",
+          "tool": "parse_html",
+          "arguments": {},
+          "input_from": [
+            "f_web"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_paper",
+          "tool": "parse_pdf",
+          "arguments": {},
+          "input_from": [
+            "f_paper"
+          ],
+          "produces": []
+        },
+        {
+          "id": "p_news",
+          "tool": "parse_html",
+          "arguments": {},
+          "input_from": [
+            "f_news"
+          ],
+          "produces": []
+        },
+        {
+          "id": "e_web",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_web"
+          ],
+          "produces": [
+            "web_findings"
+          ]
+        },
+        {
+          "id": "e_paper",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_paper"
+          ],
+          "produces": [
+            "paper_findings"
+          ]
+        },
+        {
+          "id": "e_news",
+          "tool": "extract_claims",
+          "arguments": {},
+          "input_from": [
+            "p_news"
+          ],
+          "produces": [
+            "news_findings"
+          ]
+        },
+        {
+          "id": "dedupe",
+          "tool": "deduplicate",
+          "arguments": {},
+          "input_from": [
+            "e_web",
+            "e_paper",
+            "e_news"
+          ],
+          "produces": [
+            "dedup"
+          ]
+        },
+        {
+          "id": "xcheck",
+          "tool": "cross_check",
+          "arguments": {},
+          "input_from": [
+            "dedupe"
+          ],
+          "produces": [
+            "cross_check"
+          ]
+        },
+        {
+          "id": "vsrc",
+          "tool": "validate_sources",
+          "arguments": {},
+          "input_from": [
+            "xcheck"
+          ],
+          "produces": [
+            "verified_sources",
+            "source_validation"
+          ]
+        },
+        {
+          "id": "rank",
+          "tool": "rank_relevance",
+          "arguments": {},
+          "input_from": [
+            "vsrc"
+          ],
+          "produces": []
+        },
+        {
+          "id": "cite",
+          "tool": "cite",
+          "arguments": {},
+          "input_from": [
+            "rank"
+          ],
+          "produces": [
+            "citation"
+          ]
+        },
+        {
+          "id": "synth",
+          "tool": "synthesize",
+          "arguments": {},
+          "input_from": [
+            "cite"
+          ],
+          "produces": []
+        },
+        {
+          "id": "fmt",
+          "tool": "format_report",
+          "arguments": {},
+          "input_from": [
+            "synth"
+          ],
+          "produces": []
+        }
+      ],
+      "stop_condition": "교차검증·출처검증을 거친 비교 리포트가 인용과 함께 완성됨"
+    }
+  },
+  {
+    "case": {
+      "model": "llada",
+      "domain": "domain_b",
+      "corruption": "broken_dependency"
+    },
+    "backend": {
+      "backend": "llada",
+      "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+      "mask_token_id": 126336,
+      "steps": 64,
+      "temperature": 0.0,
+      "quantize_4bit": true,
+      "decoding": "greedy"
+    },
+    "damaged_step_ids": [
+      "join"
+    ],
+    "masked_step_ids": [
+      "n_db",
+      "join"
+    ],
+    "masked_token_count": 48,
+    "failures": [],
+    "diagnostics": {
+      "raw_text": "{\n  \"goal\": \"3개 소스 분기별 매출 통합 분석 인사이트 리포트\",\n  \"steps\": [\n    {\"id\": \"l_csv\", \"tool\": \"load_csv\", \"arguments\": {\"path\": \"sales_q.csv\"}, \"input_from\": [], \"produces\": [\"csv_dataset\"]},\n    {\"id\": \"l_db\", \"tool\": \"load_db\", \"arguments\": {\"table\": \"customers\"}, \"input_from\": [], \"produces\": [\"db_dataset\"]},\n    {\"id\": \"l_api\", \"tool\": \"load_api\", \"arguments\": {\"endpoint\": \"market_index\"}, \"input_from\": [], \"produces\": [\"market_index\"]},\n    {\"id\": \"pr_csv\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_csv\"], \"produces\": []},\n    {\"id\": \"pr_db\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_db\"], \"produces\": []},\n    {\"id\": \"vs_csv\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_csv\"], \"produces\": []},\n    {\"id\": \"vs_db\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_db\"], \"produces\": []},\n    {\"id\": \"cm\", \"tool\": \"clean_missing\", \"arguments\": {}, \"input_from\": [\"vs_csv\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"co\", \"tool\": \"clean_outlier\", \"arguments\": {}, \"input_from\": [\"cm\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"n_csv\", \"tool\": \"normalize\", \"arguments\": {\"operation\": \"currency\"}, \"input_from\": [\"co\"], \"produces\": [\"normalization\"]},\n    {\"id\": \"n_db\", \"tool\": \"normalize\", \"arguments\": {\"operation\": \"currency\"}, \"input_from\": [\"vs_db\"], \"produces\": [\"normalization\"]},\n    {\"id\": \"join\", \"tool\": \"join\", \"arguments\": {}, \"input_from\": [\"\", \"n_csv\", \"n_db\"], \"produces\": [\"join\"]},\n    {\"id\": \"enrich\", \"tool\": \"enrich\", \"arguments\": {}, \"input_from\": [\"join\", \"l_api\"], \"produces\": []},\n    {\"id\": \"agg\", \"tool\": \"aggregate\", \"arguments\": {}, \"input_from\": [\"enrich\"], \"produces\": [\"aggregation\"]},\n    {\"id\": \"pivot\", \"tool\": \"pivot\", \"arguments\": {}, \"input_from\": [\"agg\"], \"produces\": []},\n    {\"id\": \"stat\", \"tool\": \"statistical_test\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"corr\", \"tool\": \"correlate\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"viz\", \"tool\": \"visualize\", \"arguments\": {}, \"input_from\": [\"stat\", \"corr\"], \"produces\": []},\n    {\"id\": \"interp\", \"tool\": \"interpret\", \"arguments\": {}, \"input_from\": [\"viz\"], \"produces\": []},\n    {\"id\": \"report\", \"tool\": \"report\", \"arguments\": {}, \"input_from\": [\"interp\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성\"\n}",
+      "raw_length": 2375,
+      "fillings": {
+        "n_db": " {\"id\": \"n_db\", \"tool\": \"normalize\", \"arguments\": {\"operation\": \"currency\"}, \"input_from\": [\"vs_db\"], \"produces\": [\"normalization\"]},",
+        "join.input_from": " [\"\", \"n_csv\", \"n_db\"],"
+      },
+      "mask_token": "<|mdm_mask|>",
+      "mask_tokens_remaining": 0,
+      "parsed": true,
+      "parse_failure": null
+    },
+    "backend_diagnostics": {
+      "masked_positions": 48,
+      "mask_tokens_left": 0,
+      "steps": 64
+    },
+    "score": {
+      "repairer": "llada",
+      "valid": false,
+      "errors_remaining": 1,
+      "error_types_remaining": [
+        "unknown_dependency"
+      ],
+      "runtime_succeeded": false,
+      "collateral_modified": 1,
+      "collateral_renamed": 0,
+      "collateral_removed": 0,
+      "modified_step_ids": [
+        "n_db"
+      ],
+      "renamed_step_ids": [],
+      "removed_step_ids": [],
+      "spurious_added": 0,
+      "added_step_ids": [],
+      "damaged_total": 1,
+      "damaged_restored": 0
+    },
+    "solved": false,
+    "collateral_total": 1,
+    "elapsed_seconds": 349.551,
+    "repaired_plan": {
+      "goal": "3개 소스 분기별 매출 통합 분석 인사이트 리포트",
+      "steps": [
+        {
+          "id": "l_csv",
+          "tool": "load_csv",
+          "arguments": {
+            "path": "sales_q.csv"
+          },
+          "input_from": [],
+          "produces": [
+            "csv_dataset"
+          ]
+        },
+        {
+          "id": "l_db",
+          "tool": "load_db",
+          "arguments": {
+            "table": "customers"
+          },
+          "input_from": [],
+          "produces": [
+            "db_dataset"
+          ]
+        },
+        {
+          "id": "l_api",
+          "tool": "load_api",
+          "arguments": {
+            "endpoint": "market_index"
+          },
+          "input_from": [],
+          "produces": [
+            "market_index"
+          ]
+        },
+        {
+          "id": "pr_csv",
+          "tool": "profile",
+          "arguments": {},
+          "input_from": [
+            "l_csv"
+          ],
+          "produces": []
+        },
+        {
+          "id": "pr_db",
+          "tool": "profile",
+          "arguments": {},
+          "input_from": [
+            "l_db"
+          ],
+          "produces": []
+        },
+        {
+          "id": "vs_csv",
+          "tool": "validate_schema",
+          "arguments": {},
+          "input_from": [
+            "pr_csv"
+          ],
+          "produces": []
+        },
+        {
+          "id": "vs_db",
+          "tool": "validate_schema",
+          "arguments": {},
+          "input_from": [
+            "pr_db"
+          ],
+          "produces": []
+        },
+        {
+          "id": "cm",
+          "tool": "clean_missing",
+          "arguments": {},
+          "input_from": [
+            "vs_csv"
+          ],
+          "produces": [
+            "cleaning"
+          ]
+        },
+        {
+          "id": "co",
+          "tool": "clean_outlier",
+          "arguments": {},
+          "input_from": [
+            "cm"
+          ],
+          "produces": [
+            "cleaning"
+          ]
+        },
+        {
+          "id": "n_csv",
+          "tool": "normalize",
+          "arguments": {
+            "operation": "currency"
+          },
+          "input_from": [
+            "co"
+          ],
+          "produces": [
+            "normalization"
+          ]
+        },
+        {
+          "id": "n_db",
+          "tool": "normalize",
+          "arguments": {
+            "operation": "currency"
+          },
+          "input_from": [
+            "vs_db"
+          ],
+          "produces": [
+            "normalization"
+          ]
+        },
+        {
+          "id": "join",
+          "tool": "join",
+          "arguments": {},
+          "input_from": [
+            "",
+            "n_csv",
+            "n_db"
+          ],
+          "produces": [
+            "join"
+          ]
+        },
+        {
+          "id": "enrich",
+          "tool": "enrich",
+          "arguments": {},
+          "input_from": [
+            "join",
+            "l_api"
+          ],
+          "produces": []
+        },
+        {
+          "id": "agg",
+          "tool": "aggregate",
+          "arguments": {},
+          "input_from": [
+            "enrich"
+          ],
+          "produces": [
+            "aggregation"
+          ]
+        },
+        {
+          "id": "pivot",
+          "tool": "pivot",
+          "arguments": {},
+          "input_from": [
+            "agg"
+          ],
+          "produces": []
+        },
+        {
+          "id": "stat",
+          "tool": "statistical_test",
+          "arguments": {},
+          "input_from": [
+            "pivot"
+          ],
+          "produces": [
+            "statistical_analysis"
+          ]
+        },
+        {
+          "id": "corr",
+          "tool": "correlate",
+          "arguments": {},
+          "input_from": [
+            "pivot"
+          ],
+          "produces": [
+            "statistical_analysis"
+          ]
+        },
+        {
+          "id": "viz",
+          "tool": "visualize",
+          "arguments": {},
+          "input_from": [
+            "stat",
+            "corr"
+          ],
+          "produces": []
+        },
+        {
+          "id": "interp",
+          "tool": "interpret",
+          "arguments": {},
+          "input_from": [
+            "viz"
+          ],
+          "produces": []
+        },
+        {
+          "id": "report",
+          "tool": "report",
+          "arguments": {},
+          "input_from": [
+            "interp"
+          ],
+          "produces": []
+        }
+      ],
+      "stop_condition": "정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성"
+    }
+  },
+  {
+    "case": {
+      "model": "llada",
+      "domain": "domain_b",
+      "corruption": "wrong_tool"
+    },
+    "backend": {
+      "backend": "llada",
+      "model_id": "GSAI-ML/LLaDA-8B-Instruct",
+      "mask_token_id": 126336,
+      "steps": 64,
+      "temperature": 0.0,
+      "quantize_4bit": true,
+      "decoding": "greedy"
+    },
+    "damaged_step_ids": [
+      "join"
+    ],
+    "masked_step_ids": [
+      "join"
+    ],
+    "masked_token_count": 4,
+    "failures": [],
+    "diagnostics": {
+      "raw_text": "{\n  \"goal\": \"3개 소스 분기별 매출 통합 분석 인사이트 리포트\",\n  \"steps\": [\n    {\"id\": \"l_csv\", \"tool\": \"load_csv\", \"arguments\": {\"path\": \"sales_q.csv\"}, \"input_from\": [], \"produces\": [\"csv_dataset\"]},\n    {\"id\": \"l_db\", \"tool\": \"load_db\", \"arguments\": {\"table\": \"customers\"}, \"input_from\": [], \"produces\": [\"db_dataset\"]},\n    {\"id\": \"l_api\", \"tool\": \"load_api\", \"arguments\": {\"endpoint\": \"market_index\"}, \"input_from\": [], \"produces\": [\"market_index\"]},\n    {\"id\": \"pr_csv\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_csv\"], \"produces\": []},\n    {\"id\": \"pr_db\", \"tool\": \"profile\", \"arguments\": {}, \"input_from\": [\"l_db\"], \"produces\": []},\n    {\"id\": \"vs_csv\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_csv\"], \"produces\": []},\n    {\"id\": \"vs_db\", \"tool\": \"validate_schema\", \"arguments\": {}, \"input_from\": [\"pr_db\"], \"produces\": []},\n    {\"id\": \"cm\", \"tool\": \"clean_missing\", \"arguments\": {}, \"input_from\": [\"vs_csv\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"co\", \"tool\": \"clean_outlier\", \"arguments\": {}, \"input_from\": [\"cm\"], \"produces\": [\"cleaning\"]},\n    {\"id\": \"n_csv\", \"tool\": \"normalize\", \"arguments\": {\"operation\": \"currency\"}, \"input_from\": [\"co\"], \"produces\": [\"normalization\"]},\n    {\"id\": \"n_db\", \"tool\": \"normalize\", \"arguments\": {\"operation\": \"key\"}, \"input_from\": [\"vs_db\"], \"produces\": [\"normalization\"]},\n    {\"id\": \"join\", \"tool\": \"merge_join\", \"arguments\": {}, \"input_from\": [\"n_csv\", \"n_db\"], \"produces\": [\"join\"]},\n    {\"id\": \"enrich\", \"tool\": \"enrich\", \"arguments\": {}, \"input_from\": [\"join\", \"l_api\"], \"produces\": []},\n    {\"id\": \"agg\", \"tool\": \"aggregate\", \"arguments\": {}, \"input_from\": [\"enrich\"], \"produces\": [\"aggregation\"]},\n    {\"id\": \"pivot\", \"tool\": \"pivot\", \"arguments\": {}, \"input_from\": [\"agg\"], \"produces\": []},\n    {\"id\": \"stat\", \"tool\": \"statistical_test\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"corr\", \"tool\": \"correlate\", \"arguments\": {}, \"input_from\": [\"pivot\"], \"produces\": [\"statistical_analysis\"]},\n    {\"id\": \"viz\", \"tool\": \"visualize\", \"arguments\": {}, \"input_from\": [\"stat\", \"corr\"], \"produces\": []},\n    {\"id\": \"interp\", \"tool\": \"interpret\", \"arguments\": {}, \"input_from\": [\"viz\"], \"produces\": []},\n    {\"id\": \"report\", \"tool\": \"report\", \"arguments\": {}, \"input_from\": [\"interp\"], \"produces\": []}\n  ],\n  \"stop_condition\": \"정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성\"\n}",
+      "raw_length": 2372,
+      "fillings": {
+        "join.tool": " \"merge_join\","
+      },
+      "mask_token": "<|mdm_mask|>",
+      "mask_tokens_remaining": 0,
+      "parsed": true,
+      "parse_failure": null
+    },
+    "backend_diagnostics": {
+      "masked_positions": 4,
+      "mask_tokens_left": 0,
+      "steps": 64
+    },
+    "score": {
+      "repairer": "llada",
+      "valid": false,
+      "errors_remaining": 1,
+      "error_types_remaining": [
+        "unknown_tool"
+      ],
+      "runtime_succeeded": false,
+      "collateral_modified": 0,
+      "collateral_renamed": 0,
+      "collateral_removed": 0,
+      "modified_step_ids": [],
+      "renamed_step_ids": [],
+      "removed_step_ids": [],
+      "spurious_added": 0,
+      "added_step_ids": [],
+      "damaged_total": 1,
+      "damaged_restored": 0
+    },
+    "solved": false,
+    "collateral_total": 0,
+    "elapsed_seconds": 48.104,
+    "repaired_plan": {
+      "goal": "3개 소스 분기별 매출 통합 분석 인사이트 리포트",
+      "steps": [
+        {
+          "id": "l_csv",
+          "tool": "load_csv",
+          "arguments": {
+            "path": "sales_q.csv"
+          },
+          "input_from": [],
+          "produces": [
+            "csv_dataset"
+          ]
+        },
+        {
+          "id": "l_db",
+          "tool": "load_db",
+          "arguments": {
+            "table": "customers"
+          },
+          "input_from": [],
+          "produces": [
+            "db_dataset"
+          ]
+        },
+        {
+          "id": "l_api",
+          "tool": "load_api",
+          "arguments": {
+            "endpoint": "market_index"
+          },
+          "input_from": [],
+          "produces": [
+            "market_index"
+          ]
+        },
+        {
+          "id": "pr_csv",
+          "tool": "profile",
+          "arguments": {},
+          "input_from": [
+            "l_csv"
+          ],
+          "produces": []
+        },
+        {
+          "id": "pr_db",
+          "tool": "profile",
+          "arguments": {},
+          "input_from": [
+            "l_db"
+          ],
+          "produces": []
+        },
+        {
+          "id": "vs_csv",
+          "tool": "validate_schema",
+          "arguments": {},
+          "input_from": [
+            "pr_csv"
+          ],
+          "produces": []
+        },
+        {
+          "id": "vs_db",
+          "tool": "validate_schema",
+          "arguments": {},
+          "input_from": [
+            "pr_db"
+          ],
+          "produces": []
+        },
+        {
+          "id": "cm",
+          "tool": "clean_missing",
+          "arguments": {},
+          "input_from": [
+            "vs_csv"
+          ],
+          "produces": [
+            "cleaning"
+          ]
+        },
+        {
+          "id": "co",
+          "tool": "clean_outlier",
+          "arguments": {},
+          "input_from": [
+            "cm"
+          ],
+          "produces": [
+            "cleaning"
+          ]
+        },
+        {
+          "id": "n_csv",
+          "tool": "normalize",
+          "arguments": {
+            "operation": "currency"
+          },
+          "input_from": [
+            "co"
+          ],
+          "produces": [
+            "normalization"
+          ]
+        },
+        {
+          "id": "n_db",
+          "tool": "normalize",
+          "arguments": {
+            "operation": "key"
+          },
+          "input_from": [
+            "vs_db"
+          ],
+          "produces": [
+            "normalization"
+          ]
+        },
+        {
+          "id": "join",
+          "tool": "merge_join",
+          "arguments": {},
+          "input_from": [
+            "n_csv",
+            "n_db"
+          ],
+          "produces": [
+            "join"
+          ]
+        },
+        {
+          "id": "enrich",
+          "tool": "enrich",
+          "arguments": {},
+          "input_from": [
+            "join",
+            "l_api"
+          ],
+          "produces": []
+        },
+        {
+          "id": "agg",
+          "tool": "aggregate",
+          "arguments": {},
+          "input_from": [
+            "enrich"
+          ],
+          "produces": [
+            "aggregation"
+          ]
+        },
+        {
+          "id": "pivot",
+          "tool": "pivot",
+          "arguments": {},
+          "input_from": [
+            "agg"
+          ],
+          "produces": []
+        },
+        {
+          "id": "stat",
+          "tool": "statistical_test",
+          "arguments": {},
+          "input_from": [
+            "pivot"
+          ],
+          "produces": [
+            "statistical_analysis"
+          ]
+        },
+        {
+          "id": "corr",
+          "tool": "correlate",
+          "arguments": {},
+          "input_from": [
+            "pivot"
+          ],
+          "produces": [
+            "statistical_analysis"
+          ]
+        },
+        {
+          "id": "viz",
+          "tool": "visualize",
+          "arguments": {},
+          "input_from": [
+            "stat",
+            "corr"
+          ],
+          "produces": []
+        },
+        {
+          "id": "interp",
+          "tool": "interpret",
+          "arguments": {},
+          "input_from": [
+            "viz"
+          ],
+          "produces": []
+        },
+        {
+          "id": "report",
+          "tool": "report",
+          "arguments": {},
+          "input_from": [
+            "interp"
+          ],
+          "produces": []
+        }
+      ],
+      "stop_condition": "정제·정규화·조인·집계·통계분석을 거친 인사이트 리포트 완성"
+    }
+  }
+]

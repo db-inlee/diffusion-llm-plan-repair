@@ -45,6 +45,7 @@ from plan_repair.repair.dllm_backend import (
     OracleBackend,
 )
 from plan_repair.repair.dllm_backend_torch import TorchDLLMBackend, torch_available
+from plan_repair.repair.hint import HINT_LABEL, valid_tool_hint
 from plan_repair.repair.llm_client import (
     LLMClient,
     LLMError,
@@ -86,6 +87,7 @@ __all__ = [
     "DECLINED_ERROR_TYPES",
     "DEFAULT_PLACEHOLDER",
     "HANDLED_ERROR_TYPES",
+    "HINT_LABEL",
     "PARSE_FAILURE",
     "ARFullRepairer",
     "ARLocalRepairer",
@@ -142,4 +144,5 @@ __all__ = [
     "summarise",
     "task_to_json",
     "torch_available",
+    "valid_tool_hint",
 ]

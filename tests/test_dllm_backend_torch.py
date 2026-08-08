@@ -14,15 +14,26 @@ import sys
 
 import pytest
 
-from plan_repair.corruption import UNKNOWN_MODE, inject_broken_dependency
-from plan_repair.data import load_reference
+from plan_repair.corruption import (
+    UNKNOWN_MODE,
+    inject_broken_dependency,
+    inject_missing_stop_condition,
+    inject_wrong_ordering,
+    inject_wrong_tool,
+)
+from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference
 from plan_repair.repair import (
     DLLMError,
     FillRequest,
     TorchDLLMBackend,
+    align_mask,
+    decode_spans,
     mask_spec,
+    mask_spec_from_paths,
+    masked_token_ids,
     plan_to_sequence,
     torch_available,
+    valid_tool_hint,
 )
 from plan_repair.repair.diffusion import LLADA_MASK_TOKEN_ID, LLADA_MODEL
 from plan_repair.repair.dllm_backend_torch import (
@@ -218,6 +229,254 @@ def test_an_empty_mask_needs_no_model():
     )
 
     assert TorchDLLMBackend(LLADA_MODEL, MASK).fill(empty) == {}
+
+
+# --- the valid-tool hint ------------------------------------------------------------------------
+#
+# The hint is prepended to the model's input, which moves every plan token along by the length of
+# the prefix. The alignment that says where a field sits was computed on the plan alone and is not
+# moved, so the two disagree by exactly that offset — and a wrong offset does not raise anything.
+# It reads the neighbouring characters and returns them as if they were the repair. That is what
+# these tests are for.
+
+
+class CharVocabulary:
+    """One token per character, in both directions.
+
+    A prefix is then a character count, so the arithmetic under test can be checked by reading
+    rather than by trusting a vocabulary. The real ones are exercised in the integration tests.
+    """
+
+    name = "char"
+
+    def encode_with_offsets(self, text):
+        return [ord(character) for character in text], [(i, i + 1) for i in range(len(text))]
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": [ord(character) for character in text]}
+
+    def decode(self, token_ids):
+        return "".join(chr(token) for token in token_ids)
+
+
+class _MaskInjectingVocabulary(CharVocabulary):
+    """A vocabulary that puts the mask token inside the hint, which must be refused."""
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": [MASK, *(ord(character) for character in text)]}
+
+
+class ReplayBackend(TorchDLLMBackend):
+    """A model that predicts exactly the text that was masked out.
+
+    Not a stand-in for competence — the point is that the answer is known, so a span that comes
+    back as anything other than the original was read from the wrong place.
+    """
+
+    def __init__(self, answer: list[int] | None = None, tokenizer=None, **overrides):
+        super().__init__(LLADA_MODEL, MASK, tokenizer=tokenizer or CharVocabulary(), **overrides)
+        self._answer = answer
+        self.seen_prompt: list[int] = []
+
+    def predict_pass(self, sequence):
+        if not self.seen_prompt:
+            self.seen_prompt = list(sequence)
+        return list(self._answer or [0] * len(sequence)), [0.9] * len(sequence)
+
+
+def tool_request(domain=DATA_PIPELINE_B):
+    """A wrong-tool repair, masked down to the field, aligned on the character vocabulary."""
+    task, plan = load_reference(domain)
+    target = next(step.id for step in plan.steps if len(step.input_from) > 1)
+    broken = inject_wrong_tool(plan, step_id=target).broken_plan
+    sequence = plan_to_sequence(broken)
+    spec = mask_spec_from_paths(sequence, broken, validate_plan(broken, task).detected_paths())
+    alignment = align_mask(sequence, spec, CharVocabulary())
+    request = FillRequest(sequence=sequence, mask=spec, alignment=alignment, task=task)
+    return request, f"{target}.tool"
+
+
+def without_tools(request):
+    """The same repair for a task that offers no tools — the hint has nothing to say."""
+    return request.model_copy(
+        update={"task": request.task.model_copy(update={"available_tools": []})}
+    )
+
+
+def hint_for(request) -> str:
+    """The hint this request produces, asserted to exist: every caller builds a tool repair."""
+    hint = valid_tool_hint(request.task, request.mask)
+    assert hint is not None
+    return hint
+
+
+def test_the_hint_names_every_tool_the_task_allows():
+    task, plan = load_reference(DATA_PIPELINE_B)
+    request, _ = tool_request(DATA_PIPELINE_B)
+
+    hint = hint_for(request)
+
+    assert hint == (
+        "valid tools: aggregate, clean_missing, clean_outlier, correlate, enrich, interpret, "
+        "join, load_api, load_csv, load_db, normalize, pivot, profile, report, "
+        "statistical_test, validate_schema, visualize\n"
+    )
+    assert set(hint.removeprefix("valid tools: ").strip().split(", ")) == task.tool_names()
+    assert plan.steps[11].tool in hint
+
+
+def test_the_tool_list_is_sorted_so_a_run_repeats():
+    """``tool_names`` returns a set; a prompt that varies between runs is not a measurement."""
+    request, _ = tool_request(DATA_PIPELINE_A)
+
+    names = hint_for(request).removeprefix("valid tools: ").strip().split(", ")
+
+    assert names == sorted(names)
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "why"),
+    [
+        (
+            lambda plan: inject_broken_dependency(plan, step_id="join", mode=UNKNOWN_MODE),
+            "a dependency repair is out of this ticket's scope",
+        ),
+        (lambda plan: inject_wrong_ordering(plan, step_id="join"), "ordering names no tool"),
+        (lambda plan: inject_missing_stop_condition(plan), "nothing is masked at all"),
+    ],
+)
+def test_only_a_repair_that_rewrites_a_tool_gets_the_hint(corrupt, why):
+    """Every other error type keeps the input it had, so its results stay comparable."""
+    task, plan = load_reference(DATA_PIPELINE_B)
+    broken = corrupt(plan).broken_plan
+    sequence = plan_to_sequence(broken)
+    spec = mask_spec_from_paths(sequence, broken, validate_plan(broken, task).detected_paths())
+
+    assert valid_tool_hint(task, spec) is None, why
+
+
+def test_a_whole_step_mask_gets_no_hint_either():
+    """It regenerates a tool too, and is deliberately left alone: C-2 is scoped to wrong_tool."""
+    task, plan = load_reference(DATA_PIPELINE_B)
+    sequence = plan_to_sequence(plan)
+
+    assert valid_tool_hint(task, mask_spec(sequence, ["join"])) is None
+
+
+def test_a_task_offering_no_tools_gets_no_hint():
+    request, _ = tool_request()
+
+    assert valid_tool_hint(without_tools(request).task, request.mask) is None
+
+
+def test_the_hint_goes_in_front_of_the_plan_and_the_plan_is_unchanged():
+    request, _ = tool_request()
+    hint = hint_for(request)
+    backend = ReplayBackend(steps=4)
+
+    backend.fill(request)
+    prompt = backend.seen_prompt
+
+    assert prompt[: len(hint)] == [ord(character) for character in hint]
+    assert prompt[len(hint) :] == masked_token_ids(request.alignment, MASK)
+
+
+def test_the_hint_is_fixed_context_and_never_a_position_to_fill():
+    request, _ = tool_request()
+    hint = hint_for(request)
+    backend = ReplayBackend(steps=4)
+
+    backend.fill(request)
+
+    assert MASK not in backend.seen_prompt[: len(hint)]
+    assert all(
+        position >= len(hint) for position, token in enumerate(backend.seen_prompt) if token == MASK
+    )
+
+
+def test_a_field_reads_back_the_same_with_the_hint_as_without_it():
+    """The correction, stated as the thing it has to preserve.
+
+    Same plan, same mask, same alignment; the only difference is the prefix. A model that
+    reproduces what was masked has to yield the original field either way — and it does not,
+    if the offset is dropped.
+    """
+    request, key = tool_request()
+    hint = hint_for(request)
+    text = request.sequence.text
+
+    with_hint = ReplayBackend([ord(c) for c in hint + text], steps=4).fill(request)
+    without_hint = ReplayBackend([ord(c) for c in text], steps=4).fill(without_tools(request))
+
+    assert with_hint == without_hint
+    assert with_hint[key] == '"join_x"'
+
+
+def test_forgetting_the_offset_would_read_the_wrong_characters():
+    """What the correction is worth: the same read, done without it, is silently wrong.
+
+    Nothing raises. The field comes back as whatever sits ``len(hint)`` characters earlier in the
+    plan — a plausible-looking run of JSON from a neighbouring step. That is the failure this
+    arithmetic exists to prevent, and it is why it is checked rather than reasoned about.
+    """
+    request, key = tool_request()
+    hint = hint_for(request)
+    span = next(span for span in request.mask.spans if span.key == key)
+    filled = [ord(character) for character in hint + request.sequence.text]
+
+    uncorrected = decode_spans(request.alignment, filled, CharVocabulary())
+
+    assert uncorrected[key] != '"join_x"'
+    assert uncorrected[key] == (hint + request.sequence.text)[span.start : span.end]
+
+
+def test_a_hint_carrying_the_mask_token_is_refused():
+    """Denoising fills every mask token it finds, including one inside its own instructions."""
+    request, _ = tool_request()
+    backend = ReplayBackend(tokenizer=_MaskInjectingVocabulary(), steps=4)
+
+    with pytest.raises(DLLMError, match="tokenized to include the mask token"):
+        backend.fill(request)
+
+
+def test_a_model_that_rewrote_the_hint_is_caught():
+    """The freeze check covers the prefix: it is outside the mask like anything else unmasked."""
+
+    class Tampering(ReplayBackend):
+        def denoise(self, token_ids):
+            rewritten = list(token_ids)
+            rewritten[0] = 999
+            return rewritten
+
+    request, _ = tool_request()
+
+    with pytest.raises(DLLMError, match=r"rewrote 1 position.*first at 0"):
+        Tampering(steps=4).fill(request)
+
+
+def test_the_diagnostics_say_what_the_model_was_shown():
+    """A result file from after the hint has to be distinguishable from one from before it."""
+    request, _ = tool_request()
+    hint = hint_for(request)
+    backend = ReplayBackend([ord(c) for c in hint + request.sequence.text], steps=4)
+
+    backend.fill(request)
+
+    assert backend.diagnostics()["hint"] == hint
+    assert backend.diagnostics()["hint_tokens"] == len(hint)
+
+
+def test_a_fill_with_no_hint_builds_the_prompt_it_always_did():
+    """The regression guard: no hint, no prefix, and the same token sequence as before C-2."""
+    request, _ = tool_request()
+    plain = without_tools(request)
+    backend = ReplayBackend([ord(c) for c in plain.sequence.text], steps=4)
+
+    backend.fill(plain)
+
+    assert backend.seen_prompt == masked_token_ids(plain.alignment, MASK)
+    assert backend.diagnostics()["hint"] is None
+    assert backend.diagnostics()["hint_tokens"] == 0
 
 
 def test_the_settings_record_what_a_run_used():

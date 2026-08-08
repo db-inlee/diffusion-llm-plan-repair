@@ -16,8 +16,10 @@ from plan_repair.corruption import UNKNOWN_MODE, inject_broken_dependency, injec
 from plan_repair.data import DATA_PIPELINE_A, DATA_PIPELINE_B, load_reference
 from plan_repair.repair import (
     ByteOffsetTokenizer,
+    FillRequest,
     HuggingFaceTokenizer,
     OracleBackend,
+    TorchDLLMBackend,
     align_mask,
     decode_spans,
     field_spans,
@@ -28,6 +30,7 @@ from plan_repair.repair import (
     plan_to_sequence,
     repair_and_score,
     sequence_to_plan,
+    valid_tool_hint,
 )
 from plan_repair.repair.diffusion import (
     DREAM_MASK_TOKEN,
@@ -408,6 +411,65 @@ def test_what_the_gpu_backend_reads_back_is_what_reassembly_accepts(corrupt, lab
         assert sequence_to_plan(fill_masked(sequence, spec, recovered, corruption.broken_plan)) == (
             corruption.broken_plan
         ), f"{tokenizer.name}/{label}"
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_the_hint_prefix_leaves_field_decoding_intact(domain):
+    """The index correction, on vocabularies whose boundaries are not of our choosing.
+
+    Prepending the tool list moves every plan token along by the length of the prefix, while the
+    alignment that says where the field sits was computed on the plan alone. The backend drops
+    the prefix again before reading the spans back; if it did not, this would return a run of
+    JSON from somewhere else in the plan and nothing would raise. Both readings are taken here,
+    so the correction is shown to be load-bearing rather than asserted to be present.
+
+    The model is replaced by one that reproduces what was masked: the answer is then known, and
+    a span that comes back as anything else was read from the wrong place.
+    """
+    task, _, _, sequence, spec = field_case(domain, WRONG_TOOL[0])
+    hint = valid_tool_hint(task, spec)
+    assert hint and hint.startswith("valid tools: ")
+
+    for tokenizer, raw, mask_id in (
+        (llada(), load_tokenizer(LLADA_MODEL), LLADA_MASK_TOKEN_ID),
+        (dream(), load_tokenizer(DREAM_MODEL), DREAM_MASK_TOKEN_ID),
+    ):
+        alignment = align_mask(sequence, spec, tokenizer)
+        request = FillRequest(sequence=sequence, mask=spec, alignment=alignment, task=task)
+        prefix = [int(token) for token in raw(hint, add_special_tokens=False)["input_ids"]]
+        backend = _Replay(prefix + list(alignment.token_ids), raw, mask_id)
+
+        recovered = backend.fill(request)
+
+        assert prefix and mask_id not in prefix, tokenizer.name
+        assert backend.seen_prompt[: len(prefix)] == prefix, tokenizer.name
+        assert backend.diagnostics()["hint_tokens"] == len(prefix), tokenizer.name
+        # what the field was, read with the correction and without the prefix at all
+        assert recovered == decode_spans(alignment, alignment.token_ids, raw), tokenizer.name
+        value = recovered[f"{_target(domain)}.tool"]
+        assert value is not None and '_x"' in value, tokenizer.name
+        # and what it would have been without it
+        uncorrected = decode_spans(alignment, prefix + list(alignment.token_ids), raw)
+        assert uncorrected != recovered, f"{tokenizer.name}: the prefix offset changed nothing"
+
+
+def _target(domain):
+    _, plan = load_reference(domain)
+    return next(step.id for step in plan.steps if len(step.input_from) > 1)
+
+
+class _Replay(TorchDLLMBackend):
+    """A model that predicts exactly the sequence it was given the answer to."""
+
+    def __init__(self, answer, tokenizer, mask_id):
+        super().__init__(LLADA_MODEL, mask_id, tokenizer=tokenizer)
+        self._answer = answer
+        self.seen_prompt: list[int] = []
+
+    def predict_pass(self, sequence):
+        if not self.seen_prompt:
+            self.seen_prompt = list(sequence)
+        return list(self._answer), [0.9] * len(sequence)
 
 
 def test_narrowing_the_mask_shrinks_it_in_token_terms_too():

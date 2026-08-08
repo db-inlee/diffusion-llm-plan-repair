@@ -12,6 +12,13 @@ outside its reach by construction rather than by instruction. After the loop the
 are compared against the input and a mismatch is an error, because a guarantee that is never
 checked is a hope.
 
+**What the model is shown.** The plan, and — when the mask has narrowed to a tool field — one
+line naming the tools the task allows, prepended as fixed context (:mod:`plan_repair.repair.hint`).
+The prefix is tokens the loop can never write to, and it is dropped again before the filled spans
+are read back, so the character-to-token alignment keeps indexing the plan alone. That is the
+correction in full: one slice, in one place, rather than an offset threaded through every recorded
+range.
+
 **The loop.** Masked diffusion models fill a fixed-length sequence by revealing tokens over
 several passes, most confident first (low-confidence remasking). One pass predicts every masked
 position; the most confident share of them is committed; the rest stay masked for the next pass.
@@ -26,6 +33,7 @@ mock backends. The measurements belong to whoever runs it on a GPU.
 from typing import Any
 
 from plan_repair.repair.dllm_backend import DLLMError, FillRequest
+from plan_repair.repair.hint import valid_tool_hint
 from plan_repair.repair.tokenization import decode_spans, masked_token_ids
 
 DEFAULT_STEPS = 64
@@ -65,6 +73,9 @@ class TorchDLLMBackend:
         # Observation of the last fill, in tokens — recorded, never acted on.
         self.last_masked_positions: int | None = None
         self.last_mask_tokens_left: int | None = None
+        # What was prepended to the last fill, so a result file says what the model was shown.
+        self.last_hint: str | None = None
+        self.last_hint_tokens: int = 0
 
     # --- the interface ---------------------------------------------------------------------
 
@@ -77,7 +88,12 @@ class TorchDLLMBackend:
             )
 
         alignment = request.alignment
-        prompt = masked_token_ids(alignment, self.mask_token_id)
+        # The hint goes in front of the plan rather than into it: the sequence has to come back
+        # out as JSON, and there is no place inside a JSON object for a line of prose.
+        self.last_hint = valid_tool_hint(request.task, request.mask)
+        prefix = self._encode_hint(self.last_hint)
+        self.last_hint_tokens = len(prefix)
+        prompt = prefix + masked_token_ids(alignment, self.mask_token_id)
         filled = self.denoise(prompt)
         if len(filled) != len(prompt):
             raise DLLMError(
@@ -88,7 +104,31 @@ class TorchDLLMBackend:
         # unfinished sequence. This is the reliable answer to "did denoising run out of passes?".
         self.last_masked_positions = sum(1 for token in prompt if token == self.mask_token_id)
         self.last_mask_tokens_left = sum(1 for token in filled if token == self.mask_token_id)
-        return dict(decode_spans(alignment, filled, self._require_tokenizer()))
+        # The alignment indexes the plan, and the prompt is the plan with something in front of
+        # it. Dropping the prefix again puts the two back on the same footing, which is the whole
+        # of the correction: no recorded index moves, so nothing downstream can disagree about
+        # where a span is. Shifting every range instead would put the same offset in two places.
+        return dict(decode_spans(alignment, filled[len(prefix) :], self._require_tokenizer()))
+
+    def _encode_hint(self, hint: str | None) -> list[int]:
+        """The hint as tokens — fixed context, never a position the loop may write to.
+
+        No hint means no prefix and a byte-identical prompt to the one this backend built before
+        the hint existed, which is what keeps every other error type comparable.
+        """
+        if hint is None:
+            return []
+        tokenizer = self._require_tokenizer()
+        encoded: Any = tokenizer(hint, add_special_tokens=False)
+        prefix = [int(token) for token in encoded["input_ids"]]
+        if self.mask_token_id in prefix:
+            # Denoising treats every mask token as a position to fill, so a hint carrying one
+            # would be partly rewritten by the model it is meant to inform.
+            raise DLLMError(
+                f"{self.name}: the hint tokenized to include the mask token "
+                f"({self.mask_token_id}), which denoising would overwrite"
+            )
+        return prefix
 
     # --- the model -------------------------------------------------------------------------
 
@@ -200,11 +240,16 @@ class TorchDLLMBackend:
 
         ``mask_tokens_left`` above zero means denoising ended with the sequence still partly
         masked — the passes ran out before the positions did.
+
+        ``hint`` is what was prepended, verbatim. A result file that does not say what the model
+        was shown cannot be compared against one from before it was shown anything.
         """
         return {
             "masked_positions": self.last_masked_positions,
             "mask_tokens_left": self.last_mask_tokens_left,
             "steps": self.steps,
+            "hint": self.last_hint,
+            "hint_tokens": self.last_hint_tokens,
         }
 
 
