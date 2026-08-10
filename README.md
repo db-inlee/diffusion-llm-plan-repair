@@ -2,7 +2,8 @@
 
 Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진단하고, diffusion LLM으로 오류 구간만 선택적으로 복구하는 연구용 실험 레포. diffusion이 "정상 단계를 덜 망치면서" 복구하는지를 측정하는 것이 목표다.
 
-> A단계(채점 시스템)·B단계(복구기 연결) 구현 완료, 실측 1회차 수집됨. 아래 "진행 상황" 참고.
+> A단계(채점 시스템)·B단계(복구기 연결)·C단계(실패 원인 규명) 구현 완료, 실측 수집됨. 아래 "진행 상황" 참고.
+> C단계 서술은 **초안**이며 컨펌 대기 중이다.
 
 ---
 
@@ -102,9 +103,43 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 정직하게: 셀당 1회 실행이고, GPT-5는 temperature를 못 낮춰 비결정적이다. 자세한 것은
 [docs/design-decisions-phase-b.md](docs/design-decisions-phase-b.md).
 
-**다음: 필드 단위 마스킹.** B단계 실측이 규명한 실패 원인(step 전체를 마스크한 탓에 멀쩡한
-`produces` 태그까지 재생성됨)을 제거해, 깨진 필드만 마스크하고 복구 성공을 다시 잰다. 현재의
-0/15가 모델의 한계인지 마스킹 단위 설계의 한계인지를 가르는 실험이다.
+**C단계 — 실패 원인 규명 (초안)**
+
+B단계는 diffusion 0/15가 모델의 한계인지 우리 파이프라인의 한계인지 갈리지 않은 채 끝났다.
+C단계는 원인을 하나씩 제거하고 그때마다 다시 쟀다. **앞의 두 가설은 틀렸고, 그 오답이 남긴
+데이터가 진짜 원인을 가리켰다.**
+
+- **C-1 필드 마스킹** — 깨진 필드(`tool`/`input_from`)만 마스크해 `produces`를 보존.
+  마스크가 87~92% 좁아지고 `missing_operation`이 사라졌다. **그러나 여전히 실패**(`unknown_tool`).
+  가설은 표면 원인만 맞혔다.
+- **C-2 유효 tool 힌트** — "모델이 유효 어휘를 모른다" 가설. ar_local만 받던 tool 목록을
+  diffusion에도 프리픽스로 줘 **비교의 불공정을 제거**했다. **가설은 틀렸다** — 목록을 줘도 실패
+  (`dedupe`→`deduplicate`, `join`→`join_db`).
+- **토큰 분석** — "정답을 알면서 복사하지 않는다"는 가설도 틀렸다. 모델은 `join`을 **정확히 썼고**,
+  마스크가 정답보다 1토큰 길어 남는 칸에 `_db`를 붙인 것이었다. 원인은 손상 규약 `_x`가
+  정확히 1토큰이라는 데 있었다(39/39 스텝에서 잉여 1).
+- **C-3 길이 맞춘 손상** — 정답과 토큰 길이가 같은 손상으로 대조군을 만들어 마스크 = 정답 길이로
+  통제. **결과: solved.**
+
+| 단계 | 마스크 칸 | 모델이 채운 것 | 결과 |
+| --- | --- | --- | --- |
+| C-1 · A/B | 5 / 4 | `"deduplicate"` / `"merge_join"` | `unknown_tool` |
+| C-2 · A/B | 5 / 4 | `"deduplicate"` / `"join_db"` | `unknown_tool` |
+| C-3 · A/B | **4 / 3** | **`"dedupe"` / `"join"`** | **solved, collateral 0, 복원 1/1** |
+
+**출력 토큰 수는 여섯 케이스 전부에서 마스크 칸 수와 정확히 일치한다.** 잉여 칸이 있으면
+반드시 채워진다.
+
+C-2와 C-3는 복구기 설정이 완전히 동일하고, 모델이 받는 토큰열도 **마스크 칸을 빼면 완전히 같다**
+(906 vs 905, 890 vs 889토큰). 따라서 두 결과의 차이는 마스크 길이에 귀속된다.
+
+**정직한 스코프.** 이것은 "`wrong_tool` 유형에서, 마스크 길이를 정답과 맞췄을 때, LLaDA가 정확히
+복구하며 정상 단계를 하나도 건드리지 않는다"는 2케이스 결과다. 모든 유형·모든 조건이 아니다.
+여전히 열려 있는 것: `broken_dependency`(다른 실패 양상), Dream(미재측정), 힌트의 필요성(길이만
+맞춘 조건은 미측정), 일반 `_x` 손상에서의 마스크 초과(원인 규명일 뿐 해결 아님), 같은 조건에서의
+AR 비교(프로젝트의 원래 질문은 아직 답해지지 않았다), OOM 11셀.
+
+자세한 것은 [docs/design-decisions-phase-c.md](docs/design-decisions-phase-c.md).
 
 ---
 
@@ -119,6 +154,25 @@ uv run python scripts/aggregate_results.py --results results                    
 `results/`의 각 JSON은 한 셀이다 — 채점 결과, 복구된 계획, 그리고 diffusion의 경우 모델 raw 출력과
 파싱 실패 진단(마스크 토큰 잔존 수, 깨진 지점 문맥)까지 담는다. 집계 표의 모든 숫자는
 `scripts/aggregate_results.py`가 이 파일들에서 계산하므로, 다시 돌려 확인할 수 있다.
+
+C단계 재측정은 GPU에서 돌린 것을 단계별로 따로 뒀다:
+
+| 파일 | 내용 |
+| --- | --- |
+| `results/diffusion_c1/c1_remeasure.json` | 필드 마스킹 (힌트 없음), 4케이스 |
+| `results/diffusion_c2/c2_remeasure.json` | + 유효 tool 힌트, `wrong_tool` 2케이스 |
+| `results/diffusion_c3/c3_remeasure.json` | + 길이 맞춘 손상, 2케이스 (solved) |
+
+각 파일의 `masked_token_count`, `diagnostics.fillings`, `backend_diagnostics.hint_tokens`,
+`injected[].detail`이 위 표의 근거다. C-3의 `injected[].detail`은 손상 모드와 길이 매칭에 쓴
+tokenizer까지 기록하므로, 어느 손상으로 얻은 수치인지 파일만 보고 구별된다.
+
+길이 맞춘 손상으로 다시 돌리려면:
+
+```
+python scripts/run_diffusion_experiment.py --model llada \
+    --corruption wrong_tool_length_matched --out results/diffusion_c3
+```
 
 ---
 
@@ -150,7 +204,9 @@ python scripts/run_diffusion_experiment.py --model dream --out results/dream
 ```bash
 --model {llada,dream,all}     --domain {domain_a,domain_b,all}
 --corruption {broken_dependency,dependency_cycle,wrong_tool,duplicate_step,
-              step_deletion,wrong_ordering,missing_stop_condition,drop_required_step,all}
+              step_deletion,wrong_ordering,missing_stop_condition,drop_required_step,
+              wrong_tool_length_matched,all}   # all은 앞의 8개(기존 매트릭스 그대로)
+--match-tokenizer llada       # 길이 맞춘 손상을 어느 어휘로 매칭할지
 --steps 64        # denoising 패스 수
 --temperature 0   # 0이면 greedy(재현 가능), >0이면 샘플링
 --limit N         # 새 케이스 N개만
