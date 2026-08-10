@@ -33,6 +33,7 @@ from plan_repair.repair.remask import (
     plan_to_sequence,
     sequence_to_plan,
 )
+from plan_repair.repair.snap import ToolSnap, snap_tool_fillings
 from plan_repair.repair.tokenization import OffsetTokenizer, TokenAlignment, align_mask
 from plan_repair.schema.plan import AgentPlan
 from plan_repair.schema.task import AgentTask
@@ -60,14 +61,26 @@ class DiffusionRepairer:
     mask_token = ""
     mask_token_id = -1
 
-    def __init__(self, backend: DLLMBackend, tokenizer: OffsetTokenizer | None = None) -> None:
+    def __init__(
+        self,
+        backend: DLLMBackend,
+        tokenizer: OffsetTokenizer | None = None,
+        *,
+        snap_tools: bool = False,
+    ) -> None:
         self._backend = backend
         self._tokenizer = tokenizer
+        # Off by default. Every measurement before Ticket D-1 was taken without it, and a control
+        # that changes nothing scores as a repair with it on (see ``snap``), so switching it on is
+        # a decision the caller makes rather than one it inherits.
+        self.snap_tools = snap_tools
         self.failures: list[RepairFailure] = []
         self.last_mask: MaskSpec | None = None
         self.last_alignment: TokenAlignment | None = None
         # What the model produced last time, kept whether or not it parsed.
         self.last_diagnostics: RepairDiagnostics | None = None
+        # What the snap did to it, per tool field — empty when the snap is off.
+        self.last_snaps: dict[str, ToolSnap] = {}
 
     def repair(
         self,
@@ -78,6 +91,7 @@ class DiffusionRepairer:
         sequence = plan_to_sequence(broken_plan)
         spec = mask_spec_from_paths(sequence, broken_plan, validation.detected_paths())
         self.last_mask = spec
+        self.last_snaps = {}
 
         alignment: TokenAlignment | None = None
         if self._tokenizer is not None:
@@ -93,10 +107,18 @@ class DiffusionRepairer:
         except DLLMError as exc:
             return self._give_up(broken_plan, BACKEND_FAILURE, str(exc))
 
+        # Completing a tool name the model nearly wrote happens here rather than in the backend:
+        # it is the same rule for every model and every mock, and a backend that owned it could
+        # be bypassed by a control (see :mod:`plan_repair.repair.snap`). ``filling`` itself is
+        # left as the model returned it, because the diagnostics keep the model's own answer.
+        put_back = filling
+        if self.snap_tools:
+            put_back, self.last_snaps = snap_tool_fillings(filling, spec, task.tool_names())
+
         # fill_masked refuses anything outside the mask, so a backend cannot reach a healthy step
         # even by mistake.
         try:
-            filled = fill_masked(sequence, spec, filling, broken_plan)
+            filled = fill_masked(sequence, spec, put_back, broken_plan)
         except ValueError as exc:
             return self._give_up(broken_plan, BACKEND_FAILURE, str(exc))
 
@@ -106,11 +128,15 @@ class DiffusionRepairer:
             # The text is kept before anything else happens to it: this is the only point where
             # what the model actually produced still exists.
             self.last_diagnostics = diagnose(
-                raw_text=filled, fillings=filling, mask_token=self.mask_token, error=exc
+                raw_text=filled,
+                fillings=filling,
+                mask_token=self.mask_token,
+                error=exc,
+                snaps=self.last_snaps,
             )
             return self._give_up(broken_plan, PARSE_FAILURE, str(exc))
         self.last_diagnostics = diagnose(
-            raw_text=filled, fillings=filling, mask_token=self.mask_token
+            raw_text=filled, fillings=filling, mask_token=self.mask_token, snaps=self.last_snaps
         )
         return repaired
 

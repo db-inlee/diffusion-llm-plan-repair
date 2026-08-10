@@ -176,13 +176,16 @@ def build_tokenizer(model: str, backend_kind: str) -> Any:
 
 
 def build_repairer(
-    case: Case, backend_kind: str, plan: AgentPlan, steps: int, temperature: float
+    case: Case, backend_kind: str, plan: AgentPlan, steps: int, temperature: float, snap: bool
 ) -> tuple[Any, Any]:
     """The repairer for this case, and the backend behind it if it has one.
 
     The rule-based and autoregressive repairers are here so that every repairer in the comparison
     writes the same result shape from the same corruption matrix — a table assembled from files
     produced by different scripts would be a table of differences between scripts.
+
+    ``snap`` reaches only the diffusion repairers, because it completes a value read back out of
+    a mask and the other two return whole plans.
     """
     if case.model == "deterministic":
         return DeterministicRepairer(), None
@@ -191,7 +194,10 @@ def build_repairer(
         builder = ARFullRepairer if case.model == "ar_full" else ARLocalRepairer
         return builder(client), None
     backend = build_backend(backend_kind, case.model, plan, steps, temperature)
-    return MODELS[case.model][0](backend, build_tokenizer(case.model, backend_kind)), backend
+    repairer = MODELS[case.model][0](
+        backend, build_tokenizer(case.model, backend_kind), snap_tools=snap
+    )
+    return repairer, backend
 
 
 def build_length(model: str) -> VocabularyLength:
@@ -216,13 +222,18 @@ def build_corruption(name: str, task: AgentTask, plan: AgentPlan, match: str) ->
 
 
 def run_case(
-    case: Case, backend_kind: str, steps: int, temperature: float, match: str = "llada"
+    case: Case,
+    backend_kind: str,
+    steps: int,
+    temperature: float,
+    match: str = "llada",
+    snap: bool = False,
 ) -> dict[str, Any]:
     task, plan = load_reference(DOMAINS[case.domain])
     corruption = build_corruption(case.corruption, task, plan, match)
     damaged = [step_id for error in corruption.injected for step_id in error.damaged_step_ids]
 
-    repairer, backend = build_repairer(case, backend_kind, plan, steps, temperature)
+    repairer, backend = build_repairer(case, backend_kind, plan, steps, temperature, snap)
 
     started = time.monotonic()
     repaired, score = repair_and_score(
@@ -255,6 +266,9 @@ def run_case(
             else None
         ),
         "failures": [failure.model_dump() for failure in getattr(repairer, "failures", [])],
+        # Whether a filled tool name was allowed to be completed to a valid one. A run that does
+        # not say cannot be compared with one taken before the snap existed.
+        "snap": bool(getattr(repairer, "snap_tools", False)),
         # What the model produced, before anything was parsed. Without this a parse failure has
         # no explanation, only a line number.
         "diagnostics": (
@@ -312,6 +326,11 @@ def main(argv: list[str] | None = None) -> int:
         default="torch",
         help="torch runs the real model; oracle and echo are mocks for checking the flow",
     )
+    parser.add_argument(
+        "--snap",
+        action="store_true",
+        help="complete a filled tool name to the valid tool it unambiguously reproduces",
+    )
     parser.add_argument("--steps", type=int, default=64, help="denoising passes")
     parser.add_argument("--temperature", type=float, default=0.0, help="0 keeps it greedy")
     parser.add_argument("--out", type=Path, default=Path("results"))
@@ -353,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.steps,
                 arguments.temperature,
                 arguments.match_tokenizer,
+                arguments.snap,
             )
         except Exception as exc:  # a case that blows up must not take the batch with it
             failed += 1

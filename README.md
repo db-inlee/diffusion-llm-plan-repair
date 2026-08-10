@@ -141,6 +141,29 @@ AR 비교(프로젝트의 원래 질문은 아직 답해지지 않았다), OOM 1
 
 자세한 것은 [docs/design-decisions-phase-c.md](docs/design-decisions-phase-c.md).
 
+**D단계 — 목표 전환: 측정에서 작동으로 (진행 중)**
+
+C단계까지는 **복구 로직을 건드리지 않는 것**이 원칙이었다. 질문이 "diffusion이 무엇을 할 수
+있는가"였고, 답을 몰래 고쳐 주는 파이프라인은 파이프라인을 재기 때문이다. D단계의 목표는
+"정확히 작동하는 복구 시스템"이며, **이 단계의 변경은 측정이 아니라 개선이다.** 그렇게 읽어야
+하고, 그렇게 기록한다.
+
+- **D-1 유효 tool 스냅** — 모델이 채운 tool이 유효 tool을 **앞에서부터 거의 전부 재현**했을 때만
+  (문자 최장공통접두사 비율 ≥ 0.8, 유일) 그 유효 tool로 완성한다. `join_db` → `join`,
+  `deduplicate` → `dedupe`. **`merge_join`은 스냅하지 않는다** — 값 안에 숨은 이름을 찾는 것은
+  완성이 아니라 검색이고, 그 허용이 스냅을 도장 찍기로 만든다.
+  denoise 이후의 후처리라 복구 로직은 그대로다(`dllm_backend_torch.py` 무변경).
+
+문턱 0.8은 네 관측에 맞춘 값이 아니다. **두 도메인의 유효 tool끼리 이 비율은 최대 0.71**이라
+어떤 유효 tool도 다른 유효 tool로 스냅될 수 없다 — 어휘의 구조적 성질이고 테스트로 고정돼 있다.
+
+기본은 **off**다(`--snap`로 켠다). 켜면 아무것도 하지 않는 대조군(`--backend echo`)이 손상의
+`_x` 접미사째로 구제돼 solved가 되므로, 대조군은 스냅 없이 돌아야 한다.
+
+> **아직 실측이 아니다.** 기록된 C단계 출력을 다시 흘려보낸 계산으로는 실패 4건 중 3건이
+> solved가 되지만(`deduplicate`×2, `join_db`; `merge_join`은 실패 유지, C-3 2건은 불변),
+> 이는 "그 출력이 다시 나왔다면"의 계산이지 새 측정이 아니다. GPU 재측정은 미실시.
+
 ---
 
 ## 실측 재현
@@ -207,6 +230,7 @@ python scripts/run_diffusion_experiment.py --model dream --out results/dream
               step_deletion,wrong_ordering,missing_stop_condition,drop_required_step,
               wrong_tool_length_matched,all}   # all은 앞의 8개(기존 매트릭스 그대로)
 --match-tokenizer llada       # 길이 맞춘 손상을 어느 어휘로 매칭할지
+--snap            # 채운 tool 이름을 유효 tool로 완성(D-1). 기본 off — 대조군은 끄고 돈다
 --steps 64        # denoising 패스 수
 --temperature 0   # 0이면 greedy(재현 가능), >0이면 샘플링
 --limit N         # 새 케이스 N개만

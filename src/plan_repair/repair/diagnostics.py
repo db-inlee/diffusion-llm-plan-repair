@@ -17,9 +17,12 @@ report zero there while the sequence was still full of them.
 """
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from plan_repair.repair.snap import ToolSnap
 
 EXCERPT_RADIUS = 50
 
@@ -45,11 +48,16 @@ class RepairDiagnostics(BaseModel):
 
     raw_text: str
     raw_length: int
+    # What the model produced, before the snap saw it. Kept as the model's own answer so that a
+    # repair which came out solved can be read as the model's or as the snap's.
     fillings: dict[str, str | None]
     mask_token: str
     mask_tokens_remaining: int
     parsed: bool
     parse_failure: ParseFailure | None = None
+    # One entry per tool field the snap considered, whether or not it fired. Empty when the snap
+    # was off, which is every measurement taken before it existed.
+    snaps: dict[str, ToolSnap] = Field(default_factory=dict)
 
     @property
     def unfinished_denoising(self) -> bool:
@@ -63,8 +71,14 @@ def diagnose(
     fillings: dict[str, str | None],
     mask_token: str,
     error: Exception | None = None,
+    snaps: Mapping[str, ToolSnap] | None = None,
 ) -> RepairDiagnostics:
-    """Record what a repair produced, whether or not it parsed."""
+    """Record what a repair produced, whether or not it parsed.
+
+    ``fillings`` is what the model returned; ``snaps`` is what was done to it afterwards. Passing
+    the post-snap fillings here instead would lose the model's answer, and with it the only way to
+    tell which of the two a solved case belongs to.
+    """
     return RepairDiagnostics(
         raw_text=raw_text,
         raw_length=len(raw_text),
@@ -73,6 +87,7 @@ def diagnose(
         mask_tokens_remaining=raw_text.count(mask_token) if mask_token else 0,
         parsed=error is None,
         parse_failure=None if error is None else describe_failure(raw_text, error),
+        snaps=dict(snaps or {}),
     )
 
 

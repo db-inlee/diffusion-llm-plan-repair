@@ -208,3 +208,33 @@ def test_a_mock_backend_needs_no_tokenizer(runner):
     """Which is what lets the whole flow be checked off-GPU."""
     assert runner.build_tokenizer("llada", "oracle") is None
     assert runner.build_tokenizer("dream", "echo") is None
+
+
+def test_the_tool_snap_is_off_unless_the_run_asks_for_it(tmp_path):
+    """Every measurement before Ticket D-1 was taken without it, so a plain run must reproduce."""
+    run("--model", "llada", "--domain", "domain_b", "--corruption", "wrong_tool", out=tmp_path)
+
+    result = json.loads((tmp_path / "llada__domain_b__wrong_tool.json").read_text())
+
+    assert result["snap"] is False
+    assert result["diagnostics"]["snaps"] == {}
+
+
+def test_a_snapped_run_says_so_and_records_what_the_snap_did(tmp_path):
+    """A result that came out solved has to say whether the model or the snap got it there."""
+    run(
+        "--model",
+        "llada",
+        "--domain",
+        "domain_b",
+        "--corruption",
+        "wrong_tool",
+        "--snap",
+        out=tmp_path,
+    )
+
+    result = json.loads((tmp_path / "llada__domain_b__wrong_tool.json").read_text())
+
+    assert result["snap"] is True
+    # The oracle backend fills in the answer, so the snap is asked and declines.
+    assert result["diagnostics"]["snaps"]["join.tool"]["reason"] == "already a valid tool"

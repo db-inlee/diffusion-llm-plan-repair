@@ -69,6 +69,13 @@ from plan_repair.repair.remask import (
     sequence_to_plan,
 )
 from plan_repair.repair.scoring import RepairScore, repair_and_score, score_repair
+from plan_repair.repair.snap import (
+    SNAP_RATIO_FLOOR,
+    ToolSnap,
+    prefix_ratio,
+    snap_tool_fillings,
+    snap_tool_value,
+)
 from plan_repair.repair.tokenization import (
     ByteOffsetTokenizer,
     HuggingFaceTokenizer,
@@ -89,6 +96,7 @@ __all__ = [
     "HANDLED_ERROR_TYPES",
     "HINT_LABEL",
     "PARSE_FAILURE",
+    "SNAP_RATIO_FLOOR",
     "ARFullRepairer",
     "ARLocalRepairer",
     "ByteOffsetTokenizer",
@@ -123,6 +131,7 @@ __all__ = [
     "StepSpan",
     "TokenAlignment",
     "TokenizationError",
+    "ToolSnap",
     "TorchDLLMBackend",
     "align_mask",
     "decode_spans",
@@ -137,10 +146,13 @@ __all__ = [
     "parse_plan",
     "plan_to_json",
     "plan_to_sequence",
+    "prefix_ratio",
     "render_masked",
     "repair_and_score",
     "score_repair",
     "sequence_to_plan",
+    "snap_tool_fillings",
+    "snap_tool_value",
     "summarise",
     "task_to_json",
     "torch_available",
