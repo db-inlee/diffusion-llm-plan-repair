@@ -28,6 +28,7 @@ from plan_repair.repair.remask import (
     PlanSequence,
     fill_masked,
     mask_spec_from_paths,
+    paths_to_mask,
     plan_to_sequence,
     sequence_to_plan,
 )
@@ -52,7 +53,7 @@ class _MaskingRepairer:
         task: AgentTask,
     ) -> AgentPlan:
         sequence = plan_to_sequence(broken_plan)
-        spec = mask_spec_from_paths(sequence, broken_plan, validation.detected_paths())
+        spec = mask_spec_from_paths(sequence, broken_plan, paths_to_mask(validation, broken_plan))
         self.last_mask = spec
         filled = fill_masked(sequence, spec, self._fill(sequence, spec), broken_plan)
         try:

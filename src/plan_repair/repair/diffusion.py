@@ -30,6 +30,7 @@ from plan_repair.repair.remask import (
     MaskSpec,
     fill_masked,
     mask_spec_from_paths,
+    paths_to_mask,
     plan_to_sequence,
     sequence_to_plan,
 )
@@ -89,7 +90,9 @@ class DiffusionRepairer:
         task: AgentTask,
     ) -> AgentPlan:
         sequence = plan_to_sequence(broken_plan)
-        spec = mask_spec_from_paths(sequence, broken_plan, validation.detected_paths())
+        # Not every finding is damage: a step reported as dangling because some other step's
+        # reference broke is untouched, and masking it hands a healthy step to the model.
+        spec = mask_spec_from_paths(sequence, broken_plan, paths_to_mask(validation, broken_plan))
         self.last_mask = spec
         self.last_snaps = {}
 

@@ -34,6 +34,11 @@ from pydantic import BaseModel, ConfigDict
 
 from plan_repair.repair.plan_io import parse_plan
 from plan_repair.schema.plan import AgentPlan, Step
+from plan_repair.validation.models import (
+    DANGLING_STEP,
+    UNKNOWN_DEPENDENCY,
+    PlanValidationResult,
+)
 from plan_repair.validation.paths import parse_path
 
 STEP_INDENT = "    "
@@ -132,6 +137,58 @@ def field_spans(step: Step, span_start: int) -> dict[str, tuple[int, int]]:
         spans[name] = (start, start + len(rendered_value))
         cursor = start + len(rendered_value) + (2 if index < len(payload) - 1 else 0)
     return spans
+
+
+def derived_dangling_step_ids(validation: PlanValidationResult, plan: AgentPlan) -> set[str]:
+    """Steps reported as dangling only because some reference was broken.
+
+    Breaking one dependency edge reports two things: the reference that now points nowhere, and
+    the step whose output nobody consumes any more. The second is a consequence of the first —
+    that step is untouched and goes back to being consumed the moment the reference is repaired.
+
+    The causal test is what keeps this from becoming "ignore every dangling step". A dangling step
+    counts as derived only when some step carrying an unknown reference *could* have been its
+    consumer, and a step may only consume steps listed before it (:class:`~plan_repair.schema.plan
+    .AgentPlan`), so the broken reference has to sit later in the plan. A step dangling for its own
+    reasons — the spare copy a duplicate leaves behind, with no unknown reference anywhere — fails
+    that test and stays in the mask, because nothing else is going to bring it back.
+
+    The validator makes the same kind of judgement in the other direction: it skips the ordering
+    check once it finds a cycle, because an ordering violation there is a derived symptom. This is
+    that reasoning applied to the mask, and it is applied *here* rather than there on purpose —
+    the validator is the instrument, and it goes on reporting everything it sees.
+    """
+    position = {step.id: index for index, step in enumerate(plan.steps)}
+    consumers = [
+        position[step_id]
+        for error in validation.errors_of_type(UNKNOWN_DEPENDENCY)
+        for step_id in error.step_ids
+        if step_id in position
+    ]
+    if not consumers:
+        return set()
+    latest = max(consumers)
+    return {
+        step_id
+        for error in validation.errors_of_type(DANGLING_STEP)
+        for step_id in error.step_ids
+        if position.get(step_id, latest) < latest
+    }
+
+
+def paths_to_mask(validation: PlanValidationResult, plan: AgentPlan) -> set[str]:
+    """The findings a mask should act on — everything except a derived dangling step.
+
+    Dropped per *error* rather than per path, so a step that is dangling **and** something else
+    keeps the mask its other finding earns it. Only the dangling report goes.
+    """
+    derived = derived_dangling_step_ids(validation, plan)
+    return {
+        path
+        for error in validation.errors
+        if not (error.type == DANGLING_STEP and set(error.step_ids) <= derived)
+        for path in error.paths
+    }
 
 
 def mask_spec_from_paths(sequence: PlanSequence, plan: AgentPlan, paths: Iterable[str]) -> MaskSpec:
@@ -347,11 +404,13 @@ __all__ = [
     "MaskSpec",
     "PlanSequence",
     "StepSpan",
+    "derived_dangling_step_ids",
     "field_spans",
     "fill_masked",
     "mask_spec",
     "mask_spec_from_paths",
     "normalise_filling",
+    "paths_to_mask",
     "plan_to_sequence",
     "render_masked",
     "sequence_to_plan",
