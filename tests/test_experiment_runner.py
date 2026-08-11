@@ -238,3 +238,24 @@ def test_a_snapped_run_says_so_and_records_what_the_snap_did(tmp_path):
     assert result["snap"] is True
     # The oracle backend fills in the answer, so the snap is asked and declines.
     assert result["diagnostics"]["snaps"]["join.tool"]["reason"] == "already a valid tool"
+
+
+def test_the_two_post_processings_are_recorded_separately(tmp_path):
+    """A result has to say which of them a repair owes its outcome to."""
+    run(
+        "--model",
+        "llada",
+        "--domain",
+        "domain_b",
+        "--corruption",
+        "broken_dependency",
+        "--snap-deps",
+        out=tmp_path,
+    )
+
+    result = json.loads((tmp_path / "llada__domain_b__broken_dependency.json").read_text())
+
+    assert result["snap"] is False
+    assert result["snap_dependencies"] is True
+    # The oracle fills in the answer, so the cleaning is asked and finds nothing to change.
+    assert result["diagnostics"]["dependency_snaps"]["join.input_from"]["snapped"] is None

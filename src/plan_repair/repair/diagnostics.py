@@ -22,7 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from plan_repair.repair.snap import ToolSnap
+from plan_repair.repair.snap import DependencySnap, ToolSnap
 
 EXCERPT_RADIUS = 50
 
@@ -58,6 +58,9 @@ class RepairDiagnostics(BaseModel):
     # One entry per tool field the snap considered, whether or not it fired. Empty when the snap
     # was off, which is every measurement taken before it existed.
     snaps: dict[str, ToolSnap] = Field(default_factory=dict)
+    # The same for dependency fields, kept apart because the two post-processings are separate
+    # switches and a result has to say which of them a repair owes its outcome to.
+    dependency_snaps: dict[str, DependencySnap] = Field(default_factory=dict)
 
     @property
     def unfinished_denoising(self) -> bool:
@@ -72,12 +75,13 @@ def diagnose(
     mask_token: str,
     error: Exception | None = None,
     snaps: Mapping[str, ToolSnap] | None = None,
+    dependency_snaps: Mapping[str, DependencySnap] | None = None,
 ) -> RepairDiagnostics:
     """Record what a repair produced, whether or not it parsed.
 
-    ``fillings`` is what the model returned; ``snaps`` is what was done to it afterwards. Passing
-    the post-snap fillings here instead would lose the model's answer, and with it the only way to
-    tell which of the two a solved case belongs to.
+    ``fillings`` is what the model returned; the two snap records are what was done to it
+    afterwards. Passing the post-snap fillings here instead would lose the model's answer, and
+    with it the only way to tell which of the three a solved case belongs to.
     """
     return RepairDiagnostics(
         raw_text=raw_text,
@@ -88,6 +92,7 @@ def diagnose(
         parsed=error is None,
         parse_failure=None if error is None else describe_failure(raw_text, error),
         snaps=dict(snaps or {}),
+        dependency_snaps=dict(dependency_snaps or {}),
     )
 
 

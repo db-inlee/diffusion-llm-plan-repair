@@ -158,6 +158,11 @@ C단계까지는 **복구 로직을 건드리지 않는 것**이 원칙이었다
   덮어(마스크의 72~81%) 모델이 다시 쓰게 만들었다. 이제 **깨진 참조로 설명되는 dangling만**
   마스크에서 뺀다 — 중복이 남긴 dangling처럼 스스로 매달린 스텝은 그대로 마스크한다.
   판정은 validator가 아니라 마스크 쪽에서 한다(validator는 측정 도구이므로 불변).
+- **BD-2 input_from 후처리** — 좁힌 마스크에서도 채움이 두 갈래로 틀렸다: 도메인 B는 정답 id를
+  정확히 쓰고 잉여 칸을 **빈 원소**로 채웠고, 도메인 A는 id 자리에 **`produces` 태그**를 썼다.
+  빈 원소는 버리고, 태그는 **그것을 내는 스텝이 하나일 때만** 그 id로 바꾼다. 도메인 B에는
+  두 스텝이 함께 내는 태그가 셋 있어(`normalization` 등) **실제로 거부가 발생하며**, 거부도
+  기록한다 — 보수성의 비용을 셀 수 있어야 하기 때문이다.
 
 문턱 0.8은 네 관측에 맞춘 값이 아니다. **두 도메인의 유효 tool끼리 이 비율은 최대 0.71**이라
 어떤 유효 tool도 다른 유효 tool로 스냅될 수 없다 — 어휘의 구조적 성질이고 테스트로 고정돼 있다.
@@ -236,6 +241,7 @@ python scripts/run_diffusion_experiment.py --model dream --out results/dream
               wrong_tool_length_matched,all}   # all은 앞의 8개(기존 매트릭스 그대로)
 --match-tokenizer llada       # 길이 맞춘 손상을 어느 어휘로 매칭할지
 --snap            # 채운 tool 이름을 유효 tool로 완성(D-1). 기본 off — 대조군은 끄고 돈다
+--snap-deps       # 채운 input_from에서 빈 원소 제거 + 태그→step id(유일할 때만) (BD-2). 기본 off
 --steps 64        # denoising 패스 수
 --temperature 0   # 0이면 greedy(재현 가능), >0이면 샘플링
 --limit N         # 새 케이스 N개만

@@ -176,7 +176,13 @@ def build_tokenizer(model: str, backend_kind: str) -> Any:
 
 
 def build_repairer(
-    case: Case, backend_kind: str, plan: AgentPlan, steps: int, temperature: float, snap: bool
+    case: Case,
+    backend_kind: str,
+    plan: AgentPlan,
+    steps: int,
+    temperature: float,
+    snap: bool,
+    snap_deps: bool = False,
 ) -> tuple[Any, Any]:
     """The repairer for this case, and the backend behind it if it has one.
 
@@ -184,8 +190,9 @@ def build_repairer(
     writes the same result shape from the same corruption matrix — a table assembled from files
     produced by different scripts would be a table of differences between scripts.
 
-    ``snap`` reaches only the diffusion repairers, because it completes a value read back out of
-    a mask and the other two return whole plans.
+    ``snap`` and ``snap_deps`` reach only the diffusion repairers, because they act on values read
+    back out of a mask and the other two return whole plans. They are separate switches: each acts
+    on a different field, so a run with one on is still a control for the other.
     """
     if case.model == "deterministic":
         return DeterministicRepairer(), None
@@ -195,7 +202,10 @@ def build_repairer(
         return builder(client), None
     backend = build_backend(backend_kind, case.model, plan, steps, temperature)
     repairer = MODELS[case.model][0](
-        backend, build_tokenizer(case.model, backend_kind), snap_tools=snap
+        backend,
+        build_tokenizer(case.model, backend_kind),
+        snap_tools=snap,
+        snap_dependencies=snap_deps,
     )
     return repairer, backend
 
@@ -228,12 +238,15 @@ def run_case(
     temperature: float,
     match: str = "llada",
     snap: bool = False,
+    snap_deps: bool = False,
 ) -> dict[str, Any]:
     task, plan = load_reference(DOMAINS[case.domain])
     corruption = build_corruption(case.corruption, task, plan, match)
     damaged = [step_id for error in corruption.injected for step_id in error.damaged_step_ids]
 
-    repairer, backend = build_repairer(case, backend_kind, plan, steps, temperature, snap)
+    repairer, backend = build_repairer(
+        case, backend_kind, plan, steps, temperature, snap, snap_deps
+    )
 
     started = time.monotonic()
     repaired, score = repair_and_score(
@@ -266,9 +279,11 @@ def run_case(
             else None
         ),
         "failures": [failure.model_dump() for failure in getattr(repairer, "failures", [])],
-        # Whether a filled tool name was allowed to be completed to a valid one. A run that does
-        # not say cannot be compared with one taken before the snap existed.
+        # Which post-processings were allowed to touch what the model filled in. A run that does
+        # not say cannot be compared with one taken before they existed, and the two are recorded
+        # apart because they act on different fields.
         "snap": bool(getattr(repairer, "snap_tools", False)),
+        "snap_dependencies": bool(getattr(repairer, "snap_dependencies", False)),
         # What the model produced, before anything was parsed. Without this a parse failure has
         # no explanation, only a line number.
         "diagnostics": (
@@ -331,6 +346,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="complete a filled tool name to the valid tool it unambiguously reproduces",
     )
+    parser.add_argument(
+        "--snap-deps",
+        action="store_true",
+        help="drop empty references and resolve a produces tag to the one step that produces it",
+    )
     parser.add_argument("--steps", type=int, default=64, help="denoising passes")
     parser.add_argument("--temperature", type=float, default=0.0, help="0 keeps it greedy")
     parser.add_argument("--out", type=Path, default=Path("results"))
@@ -373,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.temperature,
                 arguments.match_tokenizer,
                 arguments.snap,
+                arguments.snap_deps,
             )
         except Exception as exc:  # a case that blows up must not take the batch with it
             failed += 1

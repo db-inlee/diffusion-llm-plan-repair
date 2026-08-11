@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict
 
 from plan_repair.repair.hint import TOOL_FIELD
 from plan_repair.repair.remask import MaskSpec, normalise_filling
+from plan_repair.schema.plan import AgentPlan
 
 # How much of a valid name a value has to reproduce from the front. Above the vocabulary's own
 # maximum self-similarity (0.71), and below the closest observed completion (0.83).
@@ -47,6 +48,16 @@ ALREADY_VALID = "already a valid tool"
 BELOW_FLOOR = "no valid tool is completed clearly enough"
 AMBIGUOUS = "more than one valid tool is completed equally well"
 NOT_A_STRING = "the filling is not a JSON string"
+
+# The dependency field, and the outcomes of cleaning one.
+DEPENDENCY_FIELD = "input_from"
+
+CLEANED = "cleaned"
+UNCHANGED = "every reference reads as one already"
+REFUSED = "nothing was resolvable without guessing"
+NOT_A_LIST = "the filling is not a JSON list of strings"
+AMBIGUOUS_TAG = "more than one step produces that tag"
+UNRESOLVED = "no step this one may depend on produces that"
 
 
 class ToolSnap(BaseModel):
@@ -163,6 +174,127 @@ def snap_tool_fillings(
     return snapped, record
 
 
+class DependencySnap(BaseModel):
+    """What the cleaning did to one filled ``input_from``, and what it declined to do.
+
+    ``refused`` is the half that has to be read: an element left alone is a repair that did not
+    happen, and the reason separates "the model wrote something nobody produces" from "two steps
+    claim that tag and choosing would be inventing an answer".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    original: list[str]
+    snapped: list[str] | None
+    dropped: list[str]
+    resolved: dict[str, str]
+    refused: dict[str, str]
+    reason: str
+
+    @property
+    def fired(self) -> bool:
+        return self.snapped is not None
+
+    @property
+    def replacement(self) -> str | None:
+        """The list to put back, rendered as JSON — the masked span covers the brackets too."""
+        return None if self.snapped is None else json.dumps(self.snapped, ensure_ascii=False)
+
+
+def snap_dependency_value(text: str, plan: AgentPlan, step_id: str) -> DependencySnap:
+    """Read a regenerated dependency list back as references, as far as it can be read.
+
+    Three things happen to an element, in this order:
+
+    * an empty string names nothing and is dropped — that is the surplus mask cell of Ticket C-3
+      arriving in a list rather than inside a name;
+    * a step id is a reference already and is kept;
+    * anything else is looked up among the ``produces`` tags of the steps this one could legally
+      depend on, and becomes that step's id **when exactly one step qualifies.**
+
+    The legality clause is what stops the cleaning from trading one error for another. A step may
+    only consume steps listed before it, so a tag produced by ``step_id`` itself — or by anything
+    after it — is not a candidate; resolving those would answer a broken reference with a cycle or
+    an ordering violation. Ambiguity is refused for the plainer reason that domain B has three
+    tags two steps each claim, and there is no reading of the model's answer that says which.
+    """
+    value = _as_list(text)
+    if value is None:
+        return DependencySnap(
+            original=[], snapped=None, dropped=[], resolved={}, refused={}, reason=NOT_A_LIST
+        )
+
+    step_ids = {step.id for step in plan.steps}
+    producers = _producers_before(plan, step_id)
+
+    cleaned: list[str] = []
+    dropped: list[str] = []
+    resolved: dict[str, str] = {}
+    refused: dict[str, str] = {}
+    for element in value:
+        if not element.strip():
+            dropped.append(element)
+            continue
+        if element in step_ids:
+            cleaned.append(element)
+            continue
+        owners = producers.get(element, [])
+        if len(owners) == 1:
+            cleaned.append(owners[0])
+            resolved[element] = owners[0]
+        else:
+            cleaned.append(element)
+            refused[element] = AMBIGUOUS_TAG if owners else UNRESOLVED
+
+    # "Nothing to do" and "nothing I was willing to do" are different outcomes, and a record that
+    # called them both unchanged would hide every case conservatism gave up on.
+    changed = cleaned != value
+    reason = CLEANED if changed else REFUSED if refused else UNCHANGED
+    return DependencySnap(
+        original=value,
+        snapped=cleaned if changed else None,
+        dropped=dropped,
+        resolved=resolved,
+        refused=refused,
+        reason=reason,
+    )
+
+
+def snap_dependency_fillings(
+    filling: Mapping[str, str | None], spec: MaskSpec, plan: AgentPlan
+) -> tuple[dict[str, str | None], dict[str, DependencySnap]]:
+    """Apply the cleaning to the dependency fields of ``filling``.
+
+    Which spans those are is read off the mask, the same way the tool snap reads its own — a
+    filling of ``None`` is a step being dropped and a whole-step span is not a field, so neither
+    is touched or recorded.
+    """
+    cleaned = dict(filling)
+    record: dict[str, DependencySnap] = {}
+    for span in spec.spans:
+        if span.field != DEPENDENCY_FIELD:
+            continue
+        text = filling.get(span.key)
+        if text is None:
+            continue
+        decision = snap_dependency_value(text, plan, span.step_id)
+        record[span.key] = decision
+        if decision.replacement is not None:
+            cleaned[span.key] = decision.replacement
+    return cleaned, record
+
+
+def _producers_before(plan: AgentPlan, step_id: str) -> dict[str, list[str]]:
+    """Which steps claim each ``produces`` tag, among those ``step_id`` may depend on."""
+    producers: dict[str, list[str]] = {}
+    for step in plan.steps:
+        if step.id == step_id:
+            break  # a step may only consume steps listed before it
+        for tag in step.produces:
+            producers.setdefault(tag, []).append(step.id)
+    return producers
+
+
 def _as_string(text: str) -> str | None:
     """The filling as the string it stands for, or ``None`` if it is not one.
 
@@ -177,15 +309,36 @@ def _as_string(text: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _as_list(text: str) -> list[str] | None:
+    """The filling as the list of strings it stands for, or ``None`` if it is not one."""
+    try:
+        value = json.loads(normalise_filling(text))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return [str(item) for item in value]
+
+
 __all__ = [
     "ALREADY_VALID",
     "AMBIGUOUS",
+    "AMBIGUOUS_TAG",
     "BELOW_FLOOR",
+    "CLEANED",
+    "DEPENDENCY_FIELD",
+    "NOT_A_LIST",
     "NOT_A_STRING",
+    "REFUSED",
     "SNAPPED",
     "SNAP_RATIO_FLOOR",
+    "UNCHANGED",
+    "UNRESOLVED",
+    "DependencySnap",
     "ToolSnap",
     "prefix_ratio",
+    "snap_dependency_fillings",
+    "snap_dependency_value",
     "snap_tool_fillings",
     "snap_tool_value",
 ]

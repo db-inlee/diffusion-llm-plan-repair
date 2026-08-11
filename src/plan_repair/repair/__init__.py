@@ -73,8 +73,11 @@ from plan_repair.repair.remask import (
 from plan_repair.repair.scoring import RepairScore, repair_and_score, score_repair
 from plan_repair.repair.snap import (
     SNAP_RATIO_FLOOR,
+    DependencySnap,
     ToolSnap,
     prefix_ratio,
+    snap_dependency_fillings,
+    snap_dependency_value,
     snap_tool_fillings,
     snap_tool_value,
 )
@@ -104,6 +107,7 @@ __all__ = [
     "ByteOffsetTokenizer",
     "DLLMBackend",
     "DLLMError",
+    "DependencySnap",
     "DeterministicRepairer",
     "DiffusionRepairer",
     "DreamRepairer",
@@ -155,6 +159,8 @@ __all__ = [
     "repair_and_score",
     "score_repair",
     "sequence_to_plan",
+    "snap_dependency_fillings",
+    "snap_dependency_value",
     "snap_tool_fillings",
     "snap_tool_value",
     "summarise",

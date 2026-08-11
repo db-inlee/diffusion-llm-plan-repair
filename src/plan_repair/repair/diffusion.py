@@ -34,7 +34,12 @@ from plan_repair.repair.remask import (
     plan_to_sequence,
     sequence_to_plan,
 )
-from plan_repair.repair.snap import ToolSnap, snap_tool_fillings
+from plan_repair.repair.snap import (
+    DependencySnap,
+    ToolSnap,
+    snap_dependency_fillings,
+    snap_tool_fillings,
+)
 from plan_repair.repair.tokenization import OffsetTokenizer, TokenAlignment, align_mask
 from plan_repair.schema.plan import AgentPlan
 from plan_repair.schema.task import AgentTask
@@ -68,6 +73,7 @@ class DiffusionRepairer:
         tokenizer: OffsetTokenizer | None = None,
         *,
         snap_tools: bool = False,
+        snap_dependencies: bool = False,
     ) -> None:
         self._backend = backend
         self._tokenizer = tokenizer
@@ -75,13 +81,17 @@ class DiffusionRepairer:
         # that changes nothing scores as a repair with it on (see ``snap``), so switching it on is
         # a decision the caller makes rather than one it inherits.
         self.snap_tools = snap_tools
+        # Separate switches on purpose: the two act on different fields, so a run that turns one
+        # on is still a control for the other.
+        self.snap_dependencies = snap_dependencies
         self.failures: list[RepairFailure] = []
         self.last_mask: MaskSpec | None = None
         self.last_alignment: TokenAlignment | None = None
         # What the model produced last time, kept whether or not it parsed.
         self.last_diagnostics: RepairDiagnostics | None = None
-        # What the snap did to it, per tool field — empty when the snap is off.
+        # What the snaps did to it, per field — empty when the matching switch is off.
         self.last_snaps: dict[str, ToolSnap] = {}
+        self.last_dependency_snaps: dict[str, DependencySnap] = {}
 
     def repair(
         self,
@@ -95,6 +105,7 @@ class DiffusionRepairer:
         spec = mask_spec_from_paths(sequence, broken_plan, paths_to_mask(validation, broken_plan))
         self.last_mask = spec
         self.last_snaps = {}
+        self.last_dependency_snaps = {}
 
         alignment: TokenAlignment | None = None
         if self._tokenizer is not None:
@@ -116,7 +127,11 @@ class DiffusionRepairer:
         # left as the model returned it, because the diagnostics keep the model's own answer.
         put_back = filling
         if self.snap_tools:
-            put_back, self.last_snaps = snap_tool_fillings(filling, spec, task.tool_names())
+            put_back, self.last_snaps = snap_tool_fillings(put_back, spec, task.tool_names())
+        if self.snap_dependencies:
+            put_back, self.last_dependency_snaps = snap_dependency_fillings(
+                put_back, spec, broken_plan
+            )
 
         # fill_masked refuses anything outside the mask, so a backend cannot reach a healthy step
         # even by mistake.
@@ -136,10 +151,15 @@ class DiffusionRepairer:
                 mask_token=self.mask_token,
                 error=exc,
                 snaps=self.last_snaps,
+                dependency_snaps=self.last_dependency_snaps,
             )
             return self._give_up(broken_plan, PARSE_FAILURE, str(exc))
         self.last_diagnostics = diagnose(
-            raw_text=filled, fillings=filling, mask_token=self.mask_token, snaps=self.last_snaps
+            raw_text=filled,
+            fillings=filling,
+            mask_token=self.mask_token,
+            snaps=self.last_snaps,
+            dependency_snaps=self.last_dependency_snaps,
         )
         return repaired
 
