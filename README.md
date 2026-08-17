@@ -1,9 +1,10 @@
 # Verifier-Guided Diffusion Plan Repair
 
-Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진단하고, diffusion LLM으로 오류 구간만 선택적으로 복구하는 연구용 실험 레포. diffusion이 "정상 단계를 덜 망치면서" 복구하는지를 측정하는 것이 목표다.
+Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진단하고, diffusion LLM으로 오류 구간만 선택적으로 복구하는 연구용 실험 레포.
 
-> A단계(채점 시스템)·B단계(복구기 연결)·C단계(실패 원인 규명) 구현 완료, 실측 수집됨. 아래 "진행 상황" 참고.
-> C단계 서술은 **초안**이며 컨펌 대기 중이다.
+**원래 질문은 "diffusion이 정상 단계를 덜 망치면서(collateral 낮게) 복구하는가"였다. 측정된 답은 아니오 — 무승부다.** diffusion이 푸는 유형에서 ar_local과 collateral을 나란히 재면 둘 다 0이다. 그러나 그 무승부를 파고들며 더 일반적인 것이 나왔다: **복구 정밀도(collateral)를 정하는 변수는 복구기의 종류가 아니라 "오류 영역을 얼마나 좁게 지목했는가"다.** 같은 모델·같은 손상에서 영역만 좁히면 collateral이 10→0으로 떨어지고(diffusion, 인과), 영역을 지목받은 자유 생성 복구기는 그 영역 안에 머물며(ar_local), 영역을 지목받지 못한 같은 모델은 상한을 넘긴다(ar_full, 음성 대조).
+
+> A(채점)·B(복구기 연결)·C(실패 원인 규명) 완료. **D단계 진행 중** — diffusion을 `wrong_tool`·`broken_dependency`에서 작동시켰고(스냅·마스크 정밀화), 방향 1에서 "복구 정밀도는 복구기가 아니라 영역 지정이 정한다"를 확인했다. `dependency_cycle` solved, ar 반복 측정, 커버리지 확장(사거리 밖 5유형)은 향후 과제. 아래 "진행 상황" 참고.
 
 ---
 
@@ -77,9 +78,10 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 - **B-3b-1** — 문자 span → 토큰 index 정렬(LLaDA/Dream 실제 tokenizer로 검증).
 - **B-3b-2** — PyTorch 백엔드로 실제 denoising + 재개 가능한 실험 러너.
 
-### 실측 결과 (초안 — `results/`, 셀당 1회)
+### 실측 결과 (B단계, `results/`, 셀당 1회)
 
-복구기 5종 × corruption 8유형 × 도메인 2개 = 80 셀.
+복구기 5종 × corruption 8유형 × 도메인 2개 = 80 셀. 아래는 **B단계 시점**의 수이고, D단계·방향 1에서
+집계기를 수리한 뒤 일부 값이 바뀌었다(아래 각주).
 
 | 복구기 | 측정된 셀 | solved | collateral 합 |
 | --- | --- | --- | --- |
@@ -88,6 +90,11 @@ Agent가 생성한 실행 계획(plan)의 구조적 오류를 validator로 진�
 | ar_local (국소 수정) | 16/16 | **9** | 2 |
 | LLaDA (diffusion) | 11/16 | **0** | 18 |
 | Dream (diffusion) | 4/16 | **0** | 0 |
+
+> **집계기 수리 후 정정.** 옛 집계기는 (1) 같은 셀의 여러 측정 중 디렉터리 사전순 마지막만 남기고
+> (2) api 빈 응답을 "측정됨(collateral 0)"으로 셌다. 수리 후: **ar_full은 16/16이 아니라 2/16 측정**
+> (14셀이 gpt-5 빈 응답, 실제 측정 2셀의 collateral 평균은 15), **ar_local은 4셀이 빈 응답**,
+> 최신 측정이 여럿인 셀은 승자를 지어내지 않고 "측정 여럿"으로 표시한다. 자세한 것은 D단계·방향 1.
 
 **밝혀진 것:**
 
@@ -170,9 +177,76 @@ C단계까지는 **복구 로직을 건드리지 않는 것**이 원칙이었다
 기본은 **off**다(`--snap`로 켠다). 켜면 아무것도 하지 않는 대조군(`--backend echo`)이 손상의
 `_x` 접미사째로 구제돼 solved가 되므로, 대조군은 스냅 없이 돌아야 한다.
 
-> **아직 실측이 아니다.** 기록된 C단계 출력을 다시 흘려보낸 계산으로는 실패 4건 중 3건이
-> solved가 되지만(`deduplicate`×2, `join_db`; `merge_join`은 실패 유지, C-3 2건은 불변),
-> 이는 "그 출력이 다시 나왔다면"의 계산이지 새 측정이 아니다. GPU 재측정은 미실시.
+**실측(GPU).** 스냅을 켜고 다시 재니 `wrong_tool` 2셀이 solved, collateral 0이 됐다. 모델은
+여전히 `deduplicate`·`join_db`를 냈고(원본 출력 보존), 스냅이 그것을 유효 tool로 완성해 solved가
+됐다 — "모델이 맞췄나 스냅이 찍었나"를 가르도록 원본과 스냅 기록을 분리해 남긴다. `broken_dependency`도
+BD-1(마스크 정밀화)로 collateral이 1→0이 되고, BD-2(input_from 후처리)로 두 도메인 다 solved가 됐다.
+
+| 유형 | 측정 | 마스크 토큰 | solved | collateral |
+| --- | --- | --- | --- | --- |
+| `wrong_tool` A/B | B단계 (스텝 전체) | 46 / 37 | ✗ | 0 |
+| `wrong_tool` A/B | D-1 (필드+스냅) | **5 / 4** | **✓** | **0** |
+| `broken_dependency` B | B단계 (2스텝) | 76 | ✗ | **1** |
+| `broken_dependency` B | BD-1 (영역 축소) | **9** | ✗ | **0** |
+| `broken_dependency` A/B | BD-2 (+후처리) | 15 / 9 | **✓** | **0** |
+
+**D단계 재측정 (`--snap`/`--snap-deps` 켜고, 대조군은 끄고):**
+
+| 파일 | 내용 |
+| --- | --- |
+| `results/diffusion_d1/` | `wrong_tool` + 스냅, 2셀 solved |
+| `results/diffusion_bd1/` | `broken_dependency` 마스크 정밀화, collateral 1→0 |
+| `results/diffusion_bd2/` | `broken_dependency` + 후처리, 2셀 solved |
+
+---
+
+**방향 A — collateral 비교: 원래 질문에 답하다 (무승부)**
+
+diffusion이 푸는 유형(`wrong_tool`, `broken_dependency`)에서 diffusion과 ar_local의 collateral을
+나란히 쟀다. **양쪽 다 0 — 무승부.** 원래 가설이 예상한 "diffusion이 더 깔끔하다"의 마진은
+관측되지 않았다.
+
+그리고 그 무승부가 실마리를 줬다. BD-1이 **마스크를 좁히자** collateral이 1→0이 된 것 —
+즉 **diffusion의 collateral 0은 모델의 성질이 아니라 마스크 범위(영역 지정)의 성질**이었다.
+
+**방향 1 — 복구 정밀도는 복구기가 아니라 영역이 정한다**
+
+그렇다면 진짜 독립변수는 "영역 정밀도"다. 유형을 고정하고 영역만 바꿔 검증했다.
+
+- **diffusion within-type 인과 (2건).** `dependency_cycle` A에서 같은 11스텝(정상 10개 동일)을
+  마스크하되 스텝 전체(387토큰)가 아니라 `input_from` 필드만(51토큰) 열었다. **collateral 10→0.**
+  정상 스텝 수는 그대로고 바뀐 것은 스텝 *안*의 노출 범위뿐이다. B단계에서는 그 10스텝을 지우고
+  10개를 새로 썼는데, 좁힌 영역에서는 건드릴 문자가 `input_from` 값뿐이라 하나도 못 건드린다.
+  `broken_dependency` B(1→0)도 같은 성격. **못 풀어도(사이클은 여전히 안 끊긴다) 영역을 좁히면
+  안 망친다** — collateral은 solved와 독립이고 영역이 정한다.
+- **ar도 영역 안에 머문다.** ar_local은 계획 전체를 다시 쓰는데도(마스크 같은 강제 없음)
+  `dependency_cycle`(영역 11·15스텝, 예산 상향 후 solved)에서 **손상 1개만 고치고 정상 18·19스텝을
+  보존**했다. collateral 0.
+- **음성 대조 — 같은 모델, 영역을 안 주면 상한을 넘는다.** ar_full은 validator 결과를 프롬프트에
+  쓰지 않는다("처음부터 새로 써라"). 같은 셀·같은 gpt-5인데 `dependency_cycle` A에서 **collateral 15**
+  (정상 18스텝 중 15개를 흔듦). **모델이 아니라 영역 지목이 정한다는 핵심 근거.**
+- **상한.** "collateral ≤ 영역 내 정상 스텝 수"가 63건 중 **61건**에서 지켜졌고, 위반 2건은
+  **둘 다 ar_full**(영역을 안 듣는 복구기)이다. diffusion에서는 코드로 강제되고(마스크 밖 쓰기 거부),
+  ar_local에서는 지시와 지목만으로 지켜진다 — 기전이 다른데 결과가 같다.
+
+**함의.** collateral을 낮추려면 더 정교한 복구기를 고르는 것보다, validator가 오류 영역을
+정밀하게(파생 증상과 근본 원인을 구분해) 지목하게 하는 것이 지름길이다. BD-1(파생 dangling 제외)이
+그 실례다 — 마스크를 좁히자 collateral이 사라졌다.
+
+**정직한 스코프.**
+- **커버리지는 ar 우위.** diffusion은 8유형 중 3유형만 사거리 안이다(`wrong_tool`,
+  `broken_dependency`, collateral만 0인 `dependency_cycle`). 나머지 5유형(삽입/삭제/이동/계획 필드)은
+  마스크 표현력 밖이며, 이를 넘는 방법(FlexMDM 등 가변 길이 diffusion)은 LLaDA 파인튜닝(≈1000 H100h)이
+  필요해 자원 밖이다. training-free 접근(ρ-EOS)은 LLaDA가 마스크 안에서 eos를 내지 않아 막혔다.
+- **ar의 큰 영역 결측은 능력이 아니라 예산이었다.** `max_completion_tokens=4096`이 추론에 소진돼
+  빈 응답이 됐고(`finish_reason=length`), 16384에서 solved. 이걸 뚫지 않았다면 "ar은 큰 영역을 못 한다"는
+  가짜 결론을 썼을 것이다.
+- **diffusion의 solved는 후처리에 의존한다.** ar_local은 후처리 없이 solved다. 무승부 표는 이
+  비대칭과 함께 읽어야 한다.
+- **within-type 인과는 2건, 셀당 1회다.** between-type 상관(61/63)이 보강하나 교락을 끊은 증거는 2건이고,
+  ar은 비결정인데 반복 측정하지 않았다. LLaDA만, 도메인 2개.
+
+자세한 것은 `docs/design-decisions-direction-1.md`(로컬 자산).
 
 ---
 
@@ -196,8 +270,17 @@ C단계 재측정은 GPU에서 돌린 것을 단계별로 따로 뒀다:
 | `results/diffusion_c2/c2_remeasure.json` | + 유효 tool 힌트, `wrong_tool` 2케이스 |
 | `results/diffusion_c3/c3_remeasure.json` | + 길이 맞춘 손상, 2케이스 (solved) |
 
-각 파일의 `masked_token_count`, `diagnostics.fillings`, `backend_diagnostics.hint_tokens`,
-`injected[].detail`이 위 표의 근거다. C-3의 `injected[].detail`은 손상 모드와 길이 매칭에 쓴
+D단계·방향 1 재측정:
+
+| 파일 | 내용 |
+| --- | --- |
+| `results/diffusion_d1/` | `wrong_tool` + 스냅, 2셀 solved |
+| `results/diffusion_bd1/` · `bd2/` | `broken_dependency` 마스크 정밀화 → 후처리, collateral 1→0 → solved |
+| `results/diffusion_wt/within_type_remeasure.json` | `dependency_cycle` 영역 축소, collateral 10→0 (within-type 인과) |
+| `results/ar_diag/` · `ar_big/` | ar `dependency_cycle` 예산 4096(빈 응답) vs 16384(solved, coll 0) |
+
+각 파일의 `masked_token_count`, `diagnostics.fillings`, `diagnostics.snaps`/`dependency_snaps`,
+`backend_diagnostics.hint_tokens`, `injected[].detail`이 위 표의 근거다. C-3의 `injected[].detail`은 손상 모드와 길이 매칭에 쓴
 tokenizer까지 기록하므로, 어느 손상으로 얻은 수치인지 파일만 보고 구별된다.
 
 길이 맞춘 손상으로 다시 돌리려면:
